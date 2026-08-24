@@ -1,0 +1,9 @@
+packages:
+  - packages/*
+allowBuilds:
+  "@google/genai": false
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false
+minimumReleaseAgeExclude:
+  - typebox@1.3.18
