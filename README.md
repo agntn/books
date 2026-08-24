@@ -62,9 +62,10 @@ Bytes 2000-2300 of 860296
 | `bn`           | ✓      | ✓      |      | ✓       |         | Polish national bibliography, read out of its MARC     |
 | `lubimyczytac` | ✓      | ✓      |      |         | ✓       | Polish readers: contemporary editions and their scores |
 
-None of them needs an API key. Registration order is the order a lookup walks them, so a query
-starts broad and ends up in the Polish catalogs, which is where a book the others missed usually
-turns out to be.
+None of them needs an API key. Registration order is the order a lookup walks them: the broad
+catalog first, then the two public-domain libraries, then the Polish ones. A Polish edition that
+Open Library happens to hold gets answered on the first hop, and one it does not falls through to
+a catalogue that does.
 
 Two of the columns are there to stop a request that would answer wrongly rather than not at all.
 An ISBN lookup only visits catalogs that index ISBNs - Lubimyczytać's search box, handed a number,
@@ -95,7 +96,7 @@ for (let page = 0; page < 3; page++) {
 }
 ```
 
-Everything failure-shaped arrives as a `BooksError`: `NotFoundError` when a catalog does not have
+Anything that goes wrong arrives as a `BooksError`: `NotFoundError` when a catalog does not have
 the book, `ParseError` when a scraped page changed its layout, `InvalidInputError` when an ISBN
 fails its check digit before any request goes out. ISBN handling is exported too - `toIsbn13`,
 `isIsbn`, `assertIsbn` - because normalizing an identifier is half the work of asking about it.

@@ -43,8 +43,8 @@ answered; three candidates were dropped.
   ISBNs are per file format and printed as `ISBN 978-83-288-3733-1`.
 - **National Library of Poland** (`data.bn.org.pl`): `/api/institutions/bibs.json` verified with
   `title`, `author`, `isbnIssn`, `id`, `limit`. **An unrecognized parameter is silently ignored**
-  and the API answers with the head of the catalog - `?search=` and `?q=` both returned real-looking
-  records for a query nobody made. Each record carries ~3.4 kB of MARC, which is where the clean
+  and the API answers with the head of the catalog - `?search=` and `?q=` both returned records
+  that look real for a query nobody made. Each record carries ~3.4 kB of MARC, which is where the clean
   data is; the flat fields concatenate subfields (`author` repeats the name with the publisher
   glued in between).
 - **Lubimyczytać** (`lubimyczytac.pl`): `/szukaj/ksiazki?phrase=` and `/ksiazka/{id}/{slug}`
