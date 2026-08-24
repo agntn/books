@@ -147,7 +147,7 @@ answered; three candidates were dropped.
 - Record keys arriving in a provider's response go through `recordPath()` before they are
   interpolated into the next request path. WHATWG resolves `..` inside a path, so an unchecked
   `works[0].key` would send the request to a different resource on the same host
-- `sanitizeUrl` redacts credentials in query parameters *and* in a path segment (the Alchemy and
+- `sanitizeUrl` redacts credentials in query parameters _and_ in a path segment (the Alchemy and
   Infura shape). The path rule is deliberately narrow - 24+ characters, letters and digits, no
   dot - so `OL7524304M`, an ISBN and `lalka-tom-pierwszy.txt` survive: a 404 naming the resource
   is diagnosable, `/REDACTED` is not
