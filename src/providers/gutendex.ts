@@ -20,12 +20,12 @@ import type {
   SearchOptions,
   TextOptions,
 } from "../core/types.ts";
-import { Provider, assertBookQuery, assertQuery } from "../core/provider.ts";
+import { Provider, assertBookQuery, assertQuery, searchTerms } from "../core/provider.ts";
 import { buildQuery } from "../core/client.ts";
 import { InvalidInputError, NotFoundError, UnsupportedOperationError } from "../core/errors.ts";
 import { register } from "../core/registry.ts";
 import { normalizeText, uniqueStrings } from "../core/text.ts";
-import { clampMaxResults } from "../core/types.ts";
+import { MAX_SUBJECTS, clampMaxResults } from "../core/types.ts";
 
 const MAX_RESULTS = 32;
 const DEFAULT_BASE_URL = "https://gutendex.com";
@@ -129,7 +129,10 @@ class Gutendex extends Provider {
       authors: authorNames(book.authors),
       translators: authorNames(book.translators),
       languages: uniqueStrings(book.languages ?? []),
-      subjects: uniqueStrings([...(book.subjects ?? []), ...(book.bookshelves ?? [])]).slice(0, 25),
+      subjects: uniqueStrings([...(book.subjects ?? []), ...(book.bookshelves ?? [])]).slice(
+        0,
+        MAX_SUBJECTS,
+      ),
       description: book.summaries?.[0] ? normalizeText(book.summaries[0]) : undefined,
       cover: book.formats?.["image/jpeg"],
       formats: toFormats(book.formats),
@@ -179,7 +182,7 @@ class Gutendex extends Provider {
       throw new UnsupportedOperationError("isbn", Gutendex.key);
     }
 
-    const search = [query.title, query.author].filter(Boolean).join(" ");
+    const search = searchTerms(query);
     const data = await this.getJSON<GutendexResponse>(
       `${this.baseUrl}/books${buildQuery({ search })}`,
     );

@@ -22,7 +22,7 @@ import { HTTPError, InvalidInputError, NotFoundError, ParseError } from "../core
 import { toIsbn10, toIsbn13 } from "../core/isbn.ts";
 import { register } from "../core/registry.ts";
 import { normalizeText, parseYear, uniqueStrings } from "../core/text.ts";
-import { clampMaxResults, toRating } from "../core/types.ts";
+import { MAX_SUBJECTS, clampMaxResults, toRating } from "../core/types.ts";
 
 const MAX_RESULTS = 20;
 const DEFAULT_BASE_URL = "https://openlibrary.org";
@@ -131,6 +131,16 @@ function recordPath(key: string | undefined, provider: string): string {
   return `${match[1]}/${match[2]}`;
 }
 
+/** Author keys an edition names directly. */
+function editionAuthorKeys(edition: OpenLibraryEdition | undefined): string[] {
+  return (edition?.authors ?? []).map((author) => author.key).filter((key) => key !== undefined);
+}
+
+/** Author keys a work names, one nesting level deeper than an edition's. */
+function workAuthorKeys(work: OpenLibraryWork | undefined): string[] {
+  return (work?.authors ?? []).map((entry) => entry.author?.key).filter((key) => key !== undefined);
+}
+
 /** Unwrap a description that may be a bare string or a `/type/text` node. */
 function readText(value: OpenLibraryText | undefined): string | undefined {
   const text = typeof value === "string" ? value : value?.value;
@@ -201,23 +211,22 @@ class OpenLibrary extends Provider {
     const { edition, work: found } = await this.locate(checked);
 
     const workKey = found?.key ?? edition?.works?.[0]?.key;
-    const editionAuthorKeys = (edition?.authors ?? [])
-      .map((author) => author.key)
-      .filter((key): key is string => Boolean(key));
+    // Author keys are known up front whenever the edition lists them, or whenever `locate` has
+    // already fetched the work - a title or work-id lookup. Resolving them in the same wave as
+    // the work and its ratings is what keeps those lookups at one round trip rather than two.
+    const knownAuthorKeys = editionAuthorKeys(edition).length
+      ? editionAuthorKeys(edition)
+      : workAuthorKeys(found);
 
-    const [work, ratings, earlyAuthors] = await Promise.all([
+    const [work, ratings, knownAuthors] = await Promise.all([
       found ?? (workKey ? this.fetchOptionalWork(workKey, edition !== undefined) : undefined),
       workKey ? this.fetchRatings(workKey) : undefined,
-      editionAuthorKeys.length > 0 ? this.fetchAuthors(editionAuthorKeys) : undefined,
+      knownAuthorKeys.length > 0 ? this.fetchAuthors(knownAuthorKeys) : undefined,
     ]);
 
-    const authors =
-      earlyAuthors ??
-      (await this.fetchAuthors(
-        (work?.authors ?? [])
-          .map((entry) => entry.author?.key)
-          .filter((key): key is string => Boolean(key)),
-      ));
+    // One more wave only for the case the keys could not be known before: an edition that names
+    // no authors of its own, whose work has just arrived.
+    const authors = knownAuthors ?? (await this.fetchAuthors(workAuthorKeys(work)));
 
     const isbn13 = toIsbn13(edition?.isbn_13?.[0] ?? edition?.isbn_10?.[0]);
     const cover = edition?.covers?.[0] ?? work?.covers?.[0];
@@ -237,7 +246,7 @@ class OpenLibrary extends Provider {
       languages: languageCodes(edition?.languages),
       subjects: uniqueStrings([...(work?.subjects ?? []), ...(edition?.subjects ?? [])]).slice(
         0,
-        25,
+        MAX_SUBJECTS,
       ),
       series: edition?.series?.[0],
       description: readText(work?.description ?? edition?.description),

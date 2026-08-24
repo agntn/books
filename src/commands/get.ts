@@ -5,7 +5,7 @@ import { bookAll, bookWithFallback } from "../core/all.ts";
 import { formatBook, formatBookAll, formatFallback } from "../core/format.ts";
 import { requireOperation } from "../core/provider.ts";
 import { isAllProviders, providerArg, selectProvider } from "../core/resolve.ts";
-import { toBookQuery } from "./args.ts";
+import { runCommand, toBookQuery } from "./args.ts";
 
 export default defineCommand({
   meta: {
@@ -34,7 +34,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    try {
+    await runCommand(async () => {
       const query = toBookQuery(args);
 
       if (isAllProviders(args.provider)) {
@@ -49,9 +49,6 @@ export default defineCommand({
 
       const { provider } = selectProvider(args.provider);
       consola.log(formatBook(await requireOperation(provider, "book")(query)));
-    } catch (error) {
-      consola.error(`Error: ${error instanceof Error ? error.message : error}`);
-      process.exit(1);
-    }
+    });
   },
 });

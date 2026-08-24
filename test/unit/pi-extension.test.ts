@@ -13,6 +13,7 @@ import {
   requireTool,
   stubRoutes,
 } from "../helpers.ts";
+import { MAX_TEXT_BYTES } from "../../src/core/types.ts";
 import booksExtension from "../../packages/pi/extensions/books.ts";
 
 /** SAFETY: the extension only calls registerTool during registration; the fake implements that seam. */
@@ -88,8 +89,12 @@ describe("books Pi extension", () => {
     const tool = requireTool(registerExtensionTools(), "books_text");
     const schema = tool.parameters as Parameters<typeof Value.Check>[0];
 
-    expect(Value.Check(schema, { title: "Frankenstein", maxBytes: 1024 })).toBe(true);
-    expect(Value.Check(schema, { title: "Frankenstein", maxBytes: 262_145 })).toBe(false);
+    // Bound taken from the library, not restated: the schema literal and MAX_TEXT_BYTES are two
+    // copies of one limit, and only a behavioural check notices when they drift apart.
+    expect(Value.Check(schema, { title: "Frankenstein", maxBytes: MAX_TEXT_BYTES })).toBe(true);
+    expect(Value.Check(schema, { title: "Frankenstein", maxBytes: MAX_TEXT_BYTES + 1 })).toBe(
+      false,
+    );
     expect(Value.Check(schema, { title: "Frankenstein", offset: -1 })).toBe(false);
   });
 

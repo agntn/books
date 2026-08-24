@@ -27,6 +27,7 @@ import {
   requireTool,
   stubRoutes,
 } from "../helpers.ts";
+import { MAX_TEXT_BYTES } from "../../src/core/types.ts";
 import booksOmpExtension, { sanitizeTerminalText } from "../../packages/omp/extensions/books.ts";
 
 interface RegisteredExtension {
@@ -96,9 +97,14 @@ describe("books OMP extension", () => {
 
     expect(accepts(requireTool(tools, "books_get"), { isbn: "9780441013593" })).toBe(true);
     expect(accepts(requireTool(tools, "books_get"), { title: "Dune", provider: "" })).toBe(false);
-    expect(accepts(requireTool(tools, "books_text"), { title: "x", maxBytes: 262_145 })).toBe(
-      false,
-    );
+    // Same drift guard as the Pi extension: OMP rebuilds the schema with its host TypeBox, so
+    // the ceiling is a second copy of MAX_TEXT_BYTES that nothing else would catch diverging.
+    expect(
+      accepts(requireTool(tools, "books_text"), { title: "x", maxBytes: MAX_TEXT_BYTES }),
+    ).toBe(true);
+    expect(
+      accepts(requireTool(tools, "books_text"), { title: "x", maxBytes: MAX_TEXT_BYTES + 1 }),
+    ).toBe(false);
     expect(accepts(requireTool(tools, "books_search"), { query: "dune", limit: 2 })).toBe(true);
     expect(accepts(requireTool(tools, "books_search"), {})).toBe(false);
   });

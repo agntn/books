@@ -179,6 +179,15 @@ export interface ProviderConfig {
   timeout?: number;
 }
 
+/**
+ * Subject headings kept on a record.
+ *
+ * Open Library alone can attach hundreds - every shelf, award and reading-list tag a contributor
+ * ever added. Past the first couple of dozen they describe the catalog's folksonomy rather than
+ * the book.
+ */
+export const MAX_SUBJECTS = 25;
+
 /** Bytes returned by `text()` when the caller names no bound. */
 export const DEFAULT_TEXT_BYTES = 32_768;
 

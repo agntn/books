@@ -38,3 +38,18 @@ export function toBookQuery(args: { book?: string; author?: string; id?: string 
     ? { isbn: normalizeIsbn(book), author: args.author, id: args.id }
     : { title: book, author: args.author, id: args.id };
 }
+
+/**
+ * Run a command body, turning any failure into one line and a non-zero exit.
+ *
+ * Every command needs the same ending, and three copies of it drift the moment one of them
+ * learns a new exit code or output shape.
+ */
+export async function runCommand(body: () => Promise<void>): Promise<void> {
+  try {
+    await body();
+  } catch (error) {
+    consola.error(`Error: ${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  }
+}

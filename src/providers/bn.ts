@@ -23,7 +23,7 @@ import { InvalidInputError, NotFoundError } from "../core/errors.ts";
 import { isbn10To13, toIsbn10, toIsbn13 } from "../core/isbn.ts";
 import { register } from "../core/registry.ts";
 import { normalizeText, parseYear, uniqueStrings } from "../core/text.ts";
-import { clampMaxResults } from "../core/types.ts";
+import { MAX_SUBJECTS, clampMaxResults } from "../core/types.ts";
 
 const MAX_RESULTS = 20;
 const DEFAULT_BASE_URL = "https://data.bn.org.pl";
@@ -249,7 +249,7 @@ class Bn extends Provider {
         ...marcValues(record, TAG.subject, "a"),
         ...marcValues(record, TAG.genre, "a"),
         record.formOfWork,
-      ]).slice(0, 25),
+      ]).slice(0, MAX_SUBJECTS),
       series: marcValue(record, TAG.series, "a"),
       description: summary ? normalizeText(summary) : undefined,
       id: record.id === undefined ? undefined : String(record.id),

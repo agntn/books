@@ -5,7 +5,7 @@ import { textWithFallback } from "../core/all.ts";
 import { formatFallback, formatText } from "../core/format.ts";
 import { requireOperation } from "../core/provider.ts";
 import { providerArg, selectProvider } from "../core/resolve.ts";
-import { parseNumericArg, toBookQuery } from "./args.ts";
+import { parseNumericArg, runCommand, toBookQuery } from "./args.ts";
 
 export default defineCommand({
   meta: {
@@ -44,7 +44,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    try {
+    await runCommand(async () => {
       const query = toBookQuery(args);
       const options = {
         offset: parseNumericArg(args.offset, "offset", { integer: true }),
@@ -58,9 +58,6 @@ export default defineCommand({
 
       const { provider } = selectProvider(args.provider, "text");
       consola.log(formatText(await requireOperation(provider, "text")(query, options)));
-    } catch (error) {
-      consola.error(`Error: ${error instanceof Error ? error.message : error}`);
-      process.exit(1);
-    }
+    });
   },
 });

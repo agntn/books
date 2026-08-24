@@ -16,9 +16,9 @@ const USER_AGENT = `agntn-books/${version} (+https://github.com/agntn/books)`;
 
 /** Request metadata shared by the HTTP helpers. */
 export interface ClientOptions {
+  /** Request timeout in milliseconds; defaults to 15 seconds. */
   timeout?: number;
-  headers?: Record<string, string>;
-  signal?: AbortSignal;
+  /** Registry key of the provider on whose behalf the request is made, for error attribution. */
   provider?: string;
 }
 
@@ -46,10 +46,8 @@ export async function getJSON<T>(url: string, options?: ClientOptions): Promise<
       headers: {
         Accept: "application/json",
         "User-Agent": USER_AGENT,
-        ...options?.headers,
       },
       timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
-      signal: options?.signal,
       retry: RETRIES,
     });
   } catch (error) {
@@ -71,10 +69,8 @@ export async function getText(url: string, options?: ClientOptions): Promise<str
       headers: {
         Accept: "text/html,application/xhtml+xml",
         "User-Agent": USER_AGENT,
-        ...options?.headers,
       },
       timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
-      signal: options?.signal,
       retry: RETRIES,
     });
   } catch (error) {
@@ -129,10 +125,8 @@ export async function readTextSlice(
         Accept: "text/plain",
         Range: `bytes=${offset}-${offset + maxBytes - 1}`,
         "User-Agent": USER_AGENT,
-        ...options?.headers,
       },
       timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
-      signal: options?.signal,
       retry: RETRIES,
     });
 

@@ -192,15 +192,10 @@ describe("bn provider", () => {
   });
 
   it("retries a search as an author query when the title index has nothing", async () => {
-    let call = 0;
-    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
-      call += 1;
-      return new Response(JSON.stringify({ bibs: call === 1 ? [] : [RECORD] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+    const fetch = stubRoutes({
+      "title=": { body: { bibs: [] } },
+      "author=": { body: { bibs: [RECORD] } },
     });
-    vi.stubGlobal("fetch", fetch);
 
     const matches = await create("bn").search!("Placeholder");
 

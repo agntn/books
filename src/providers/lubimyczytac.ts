@@ -18,7 +18,7 @@ import type {
   Rating,
   SearchOptions,
 } from "../core/types.ts";
-import { Provider, assertBookQuery, assertQuery } from "../core/provider.ts";
+import { Provider, assertBookQuery, assertQuery, searchTerms } from "../core/provider.ts";
 import { buildQuery } from "../core/client.ts";
 import { InvalidInputError, NotFoundError, UnsupportedOperationError } from "../core/errors.ts";
 import { toIsbn13 } from "../core/isbn.ts";
@@ -99,6 +99,7 @@ class Lubimyczytac extends Provider {
     assertQuery(query, Lubimyczytac.key);
     const url = `${this.baseUrl}/szukaj/ksiazki${buildQuery({ phrase: query.trim() })}`;
     const page = parseHtml(await this.getText(url));
+    const limit = clampMaxResults(options?.limit, MAX_RESULTS);
     const matches: BookMatch[] = [];
 
     for (const card of page.querySelectorAll(RESULT_SELECTOR)) {
@@ -122,7 +123,7 @@ class Lubimyczytac extends Provider {
           parseCount(selectText(card, RESULT_RATING_TEXT_SELECTOR)),
         ),
       });
-      if (matches.length >= clampMaxResults(options?.limit, MAX_RESULTS)) break;
+      if (matches.length >= limit) break;
     }
 
     return matches;
@@ -178,7 +179,7 @@ class Lubimyczytac extends Provider {
     if (!query.title) {
       throw new UnsupportedOperationError("isbn", Lubimyczytac.key);
     }
-    const search = [query.title, query.author].filter(Boolean).join(" ");
+    const search = searchTerms(query);
     const [match] = await this.search(search, { limit: 1 });
     if (!match?.id) {
       throw new NotFoundError(search, Lubimyczytac.key);

@@ -19,7 +19,7 @@ import type {
   SearchOptions,
   TextOptions,
 } from "../core/types.ts";
-import { Provider, assertBookQuery, assertQuery } from "../core/provider.ts";
+import { Provider, assertBookQuery, assertQuery, searchTerms } from "../core/provider.ts";
 import { buildQuery } from "../core/client.ts";
 import { InvalidInputError, NotFoundError, UnsupportedOperationError } from "../core/errors.ts";
 import { toIsbn13 } from "../core/isbn.ts";
@@ -115,6 +115,7 @@ class WolneLektury extends Provider {
     assertQuery(query, WolneLektury.key);
     const url = `${this.baseUrl}/szukaj/${buildQuery({ q: query.trim() })}`;
     const page = parseHtml(await this.getText(url));
+    const limit = clampMaxResults(options?.limit, MAX_RESULTS);
     const matches: BookMatch[] = [];
     for (const card of page.querySelectorAll(RESULT_SELECTOR)) {
       const link = card.querySelector(RESULT_TITLE_SELECTOR);
@@ -128,7 +129,7 @@ class WolneLektury extends Provider {
         language: "pol",
         url: `${this.baseUrl}/katalog/lektura/${slug}/`,
       });
-      if (matches.length >= clampMaxResults(options?.limit, MAX_RESULTS)) break;
+      if (matches.length >= limit) break;
     }
     return matches;
   }
@@ -199,7 +200,7 @@ class WolneLektury extends Provider {
     if (!query.title) {
       throw new UnsupportedOperationError("isbn", WolneLektury.key);
     }
-    const search = [query.title, query.author].filter(Boolean).join(" ");
+    const search = searchTerms(query);
     const [match] = await this.search(search, { limit: 1 });
     if (!match?.id) {
       throw new NotFoundError(search, WolneLektury.key);

@@ -9,7 +9,7 @@ import type {
   TextOptions,
 } from "./types.ts";
 import { getJSON, getText, readTextSlice } from "./client.ts";
-import type { ClientOptions, TextSlice } from "./client.ts";
+import type { TextSlice } from "./client.ts";
 import { InvalidInputError, UnsupportedOperationError } from "./errors.ts";
 import { assertIsbn } from "./isbn.ts";
 import { clampTextBytes } from "./types.ts";
@@ -47,19 +47,13 @@ export abstract class Provider {
   text?(query: BookQuery, options?: TextOptions): Promise<BookText>;
 
   /** Execute a provider-attributed GET request for JSON using the configured timeout. */
-  protected getJSON<T>(
-    url: string,
-    options?: Omit<ClientOptions, "provider" | "timeout">,
-  ): Promise<T> {
-    return getJSON<T>(url, { ...options, timeout: this.timeout, provider: this.name });
+  protected getJSON<T>(url: string): Promise<T> {
+    return getJSON<T>(url, { timeout: this.timeout, provider: this.name });
   }
 
   /** Execute a provider-attributed GET request for an HTML page. */
-  protected getText(
-    url: string,
-    options?: Omit<ClientOptions, "provider" | "timeout">,
-  ): Promise<string> {
-    return getText(url, { ...options, timeout: this.timeout, provider: this.name });
+  protected getText(url: string): Promise<string> {
+    return getText(url, { timeout: this.timeout, provider: this.name });
   }
 
   /**
@@ -151,6 +145,16 @@ export function assertBookQuery(query: BookQuery, provider: string): BookQuery {
   }
 
   return isbn ? { ...query, isbn: assertIsbn(isbn, provider) } : query;
+}
+
+/**
+ * The free-text query a provider falls back to when it can only search, not look up.
+ *
+ * Three of the five backends reach their records through their own search box, and each built
+ * this string for itself.
+ */
+export function searchTerms(query: BookQuery): string {
+  return [query.title, query.author].filter(Boolean).join(" ");
 }
 
 /** Operation names accepted by `requireOperation` - one per provider method. */

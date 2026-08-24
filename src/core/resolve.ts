@@ -27,13 +27,7 @@ export function providerArg(value?: string): string | undefined {
  * request and reports "not found" for a book the next provider has.
  */
 export function usableProviders(capability: keyof ProviderCapabilities): string[] {
-  return providers().filter(
-    (name) =>
-      isConfigured(name) &&
-      (capability === "search" || capability === "book" || capability === "text"
-        ? supportsOperation(name, capability)
-        : create(name).capabilities[capability]),
-  );
+  return providers().filter((name) => isConfigured(name) && create(name).capabilities[capability]);
 }
 
 /**

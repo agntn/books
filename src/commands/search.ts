@@ -5,7 +5,7 @@ import { searchAll } from "../core/all.ts";
 import { formatBooks, formatSearchAll } from "../core/format.ts";
 import { requireOperation } from "../core/provider.ts";
 import { isAllProviders, selectProvider } from "../core/resolve.ts";
-import { parseNumericArg } from "./args.ts";
+import { parseNumericArg, runCommand } from "./args.ts";
 
 export default defineCommand({
   meta: {
@@ -30,7 +30,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    try {
+    await runCommand(async () => {
       const limit = parseNumericArg(args.limit, "limit", { integer: true, min: 1 });
 
       if (isAllProviders(args.provider)) {
@@ -40,9 +40,6 @@ export default defineCommand({
       const { name, provider } = selectProvider(args.provider, "search");
       const search = requireOperation(provider, "search");
       consola.log(formatBooks(name, args.query, await search(args.query, { limit })));
-    } catch (error) {
-      consola.error(`Error: ${error instanceof Error ? error.message : error}`);
-      process.exit(1);
-    }
+    });
   },
 });
