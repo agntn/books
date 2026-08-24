@@ -83,13 +83,18 @@ class Lubimyczytac extends Provider {
     this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   }
 
+  /**
+   * What this backend serves.
+   *
+   * `isbn` is false because the site's search box matches titles and authors: handed a number it
+   * answers with unrelated books rather than with nothing, which is worse than admitting it
+   * cannot do this.
+   */
   get capabilities(): ProviderCapabilities {
     return {
       search: true,
       book: true,
       text: false,
-      // The site's search box matches titles and authors; handed an ISBN it answers with
-      // unrelated books rather than nothing, which is worse than admitting it cannot do this.
       isbn: false,
       ratings: true,
     };

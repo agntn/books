@@ -160,14 +160,15 @@ function describeQuery(query: BookQuery): string {
  *   const { provider, result } = await bookWithFallback({ isbn: "9780441013593" });
  *   ```
  *
+ * Declared `async` on purpose: a rejected query has to come back as a rejected promise, because
+ * a caller holding one catches with `.catch` and would walk straight past a synchronous throw.
+ *
  * @throws {BooksError} The last failure, when no provider could serve the book.
  */
 export async function bookWithFallback(
   query: BookQuery,
   order: string[] = query.isbn ? usableProviders("isbn") : usableProviders("book"),
 ): Promise<FallbackResult<Book>> {
-  // `async` so a rejected query returns a rejected promise. A caller holding a promise catches
-  // with `.catch`, and a function that sometimes throws synchronously walks straight past that.
   const checked = assertBookQuery(query, "books");
   return walk(
     order,

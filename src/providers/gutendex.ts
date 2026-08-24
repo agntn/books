@@ -142,6 +142,12 @@ class Gutendex extends Provider {
     };
   }
 
+  /**
+   * Read a slice of a book's text.
+   *
+   * The Gutenberg licence header travels inside the file itself and stays there. Stripping it
+   * would be cutting out the one thing that permits handing the text on at all.
+   */
   override async text(query: BookQuery, options?: TextOptions): Promise<BookText> {
     const book = await this.locate(assertBookQuery(query, Gutendex.key));
     const url = plainTextUrl(book.formats);
@@ -159,8 +165,6 @@ class Gutendex extends Provider {
       authors: authorNames(book.authors),
       ...slice,
       url,
-      // The Gutenberg licence header travels inside the file itself; it is left in place rather
-      // than stripped, because the licence is what permits handing the text on at all.
       attribution: "Public-domain text from Project Gutenberg (gutenberg.org)",
     };
   }

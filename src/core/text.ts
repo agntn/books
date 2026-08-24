@@ -68,6 +68,9 @@ export interface TrimmedBytes {
  *
  * `start` and `end` say which ends may hold a partial character: the first slice of a file has
  * nothing before it, and a slice that reached the end of the file has nothing after it.
+ *
+ * A character is at most four bytes, so at most three continuation bytes can precede a leading
+ * one. A longer run is malformed input, not a cut character, and is left alone.
  */
 export function trimPartialUtf8(
   bytes: Uint8Array,
@@ -75,8 +78,6 @@ export function trimPartialUtf8(
 ): TrimmedBytes {
   let from = 0;
   if (options.start) {
-    // A character is at most four bytes, so at most three continuation bytes can precede its
-    // leading byte; a longer run is malformed input rather than a cut character.
     while (from < bytes.byteLength && from < 3 && isContinuation(bytes[from] ?? 0)) from++;
   }
 

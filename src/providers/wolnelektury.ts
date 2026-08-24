@@ -134,6 +134,12 @@ class WolneLektury extends Provider {
     return matches;
   }
 
+  /**
+   * Fetch one record.
+   *
+   * The digital editions carry their own ISBNs, one per file format. The EPUB is the one a
+   * reader is most likely to be holding, so that is the one the record reports.
+   */
   async book(query: BookQuery): Promise<Book> {
     const { slug, book } = await this.locate(assertBookQuery(query, WolneLektury.key));
     return {
@@ -141,8 +147,6 @@ class WolneLektury extends Provider {
       title: book.title ?? "",
       authors: names(book.authors),
       translators: names(book.translators),
-      // The digital editions carry their own ISBNs, one per file format; the EPUB is the one a
-      // reader is most likely to be holding.
       isbn13: toIsbn13(book.isbn_epub ?? book.isbn_pdf ?? book.isbn_mobi),
       languages: uniqueStrings([book.language]),
       subjects: uniqueStrings([...names(book.epochs), ...names(book.genres), ...names(book.kinds)]),
@@ -155,11 +159,15 @@ class WolneLektury extends Provider {
     };
   }
 
+  /**
+   * Read a slice of a book's text.
+   *
+   * A multi-volume work is a shell: the text lives in the volumes, which are records of their
+   * own. Naming them beats "not found" for a book the library plainly has.
+   */
   override async text(query: BookQuery, options?: TextOptions): Promise<BookText> {
     const { slug, book } = await this.locate(assertBookQuery(query, WolneLektury.key));
     if (!book.txt) {
-      // A multi-volume work is a shell: the text lives in the volumes, which are records of
-      // their own. Saying so beats "not found" for a book the library plainly has.
       const volumes = uniqueStrings((book.children ?? []).map((child) => child.slug));
       throw new NotFoundError(
         volumes.length > 0

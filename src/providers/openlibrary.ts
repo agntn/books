@@ -206,14 +206,19 @@ class OpenLibrary extends Provider {
     }));
   }
 
+  /**
+   * Fetch one record, stitched from an edition and its work.
+   *
+   * Author keys are known up front whenever the edition lists them, or whenever `locate` already
+   * fetched the work. Resolving those in the same wave as the work and its ratings is what keeps
+   * a title lookup at three round trips instead of four; only an edition that names no authors
+   * of its own needs the extra one.
+   */
   async book(query: BookQuery): Promise<Book> {
     const checked = assertBookQuery(query, OpenLibrary.key);
     const { edition, work: found } = await this.locate(checked);
 
     const workKey = found?.key ?? edition?.works?.[0]?.key;
-    // Author keys are known up front whenever the edition lists them, or whenever `locate` has
-    // already fetched the work - a title or work-id lookup. Resolving them in the same wave as
-    // the work and its ratings is what keeps those lookups at one round trip rather than two.
     const knownAuthorKeys = editionAuthorKeys(edition).length
       ? editionAuthorKeys(edition)
       : workAuthorKeys(found);
@@ -224,8 +229,6 @@ class OpenLibrary extends Provider {
       knownAuthorKeys.length > 0 ? this.fetchAuthors(knownAuthorKeys) : undefined,
     ]);
 
-    // One more wave only for the case the keys could not be known before: an edition that names
-    // no authors of its own, whose work has just arrived.
     const authors = knownAuthors ?? (await this.fetchAuthors(workAuthorKeys(work)));
 
     const isbn13 = toIsbn13(edition?.isbn_13?.[0] ?? edition?.isbn_10?.[0]);
@@ -258,12 +261,15 @@ class OpenLibrary extends Provider {
     };
   }
 
-  /** Find the edition or work a query names, in one request where the catalog allows one. */
+  /**
+   * Find the edition or work a query names, in one request where the catalog allows one.
+   *
+   * `/isbn/{isbn}` answers a redirect to the edition record, which ofetch follows.
+   */
   private async locate(
     query: BookQuery,
   ): Promise<{ edition?: OpenLibraryEdition; work?: OpenLibraryWork }> {
     if (query.isbn) {
-      // `/isbn/{isbn}` redirects to the edition record; ofetch follows it.
       return {
         edition: await this.getJSON<OpenLibraryEdition>(`${this.baseUrl}/isbn/${query.isbn}.json`),
       };
@@ -335,7 +341,8 @@ class OpenLibrary extends Provider {
    * Reader scores for a work, or `undefined` when it has none.
    *
    * Scores are an ornament on a bibliographic record: a work nobody has rated answers 404 here,
-   * and that must not take the record down with it.
+   * and that must not take the record down with it. A rate limit travels on instead: swallowing
+   * that one would report a book as unrated when the catalog is simply refusing requests.
    */
   private async fetchRatings(key: string): Promise<Book["rating"]> {
     try {
@@ -348,9 +355,6 @@ class OpenLibrary extends Provider {
         data.summary?.count ?? undefined,
       );
     } catch (error) {
-      // A work nobody rated answers 404, and that must not take the record down with it. A rate
-      // limit is a different matter: swallowing it would report a book as unrated when the
-      // catalog is simply refusing requests, so it travels on.
       if (error instanceof NotFoundError || error instanceof HTTPError) return undefined;
       throw error;
     }

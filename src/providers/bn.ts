@@ -113,13 +113,14 @@ function marcValues(record: BnRecord, tag: string, subfield: string): string[] {
  * Cataloguing rules end a subfield with the punctuation that introduces the next one - `Title /`
  * before a statement of responsibility, `Publisher,` before a date - and put a publisher's name
  * in quotation marks. None of that is part of the value.
+ *
+ * Trimmed and sliced rather than matched with a regex: `/\s*[/:;,=]$/` backtracks from every
+ * position of a long run of spaces, which measured 1.5 s on 50k of them. The catalog decides how
+ * long this field is, so that is not a cost to accept.
  */
 function marcValue(record: BnRecord, tag: string, subfield: string): string | undefined {
   const value = marcValues(record, tag, subfield)[0];
   if (!value) return undefined;
-  // Trimmed and sliced rather than matched: `/\s*[/:;,=]$/` backtracks from every position of a
-  // long run of spaces, which is quadratic on a field this library does not size - 50k spaces
-  // measured at 1.5 s. The value comes from the catalog, so its length is not ours to assume.
   let trimmed = value.trim();
   if (ISBD_PUNCTUATION.has(trimmed.at(-1) ?? "")) {
     trimmed = trimmed.slice(0, -1).trim();
@@ -201,12 +202,16 @@ class Bn extends Provider {
     };
   }
 
+  /**
+   * Search the catalog, which indexes fields rather than free text.
+   *
+   * There is no parameter here that searches everything, so a query is tried as a title first
+   * and as an author only when the title index has nothing. That is what makes a bare surname
+   * work without charging every other caller a second request.
+   */
   override async search(query: string, options?: SearchOptions): Promise<BookMatch[]> {
     assertQuery(query, Bn.key);
     const limit = clampMaxResults(options?.limit, MAX_RESULTS);
-    // The catalog indexes fields, not free text: there is no parameter that searches everything.
-    // A query is tried as a title first and as an author only when the title index has nothing,
-    // which is what makes a bare surname work without costing every caller a second request.
     const byTitle = await this.query({ title: query.trim(), limit });
     const records =
       byTitle.length > 0 ? byTitle : await this.query({ author: query.trim(), limit });
