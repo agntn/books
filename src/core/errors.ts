@@ -19,9 +19,29 @@ export class BooksError extends Error {
   }
 }
 
-/** Strip API keys from URLs and URL-bearing text for safe error messages. */
+/**
+ * A path segment long enough to be a credential rather than an identifier.
+ *
+ * Vendors that key by path - Alchemy, Infura, QuickNode - put a 32-character token between two
+ * slashes, where a query-parameter rule never sees it. The catalogs this library ships talk to
+ * put identifiers there instead, and those must survive: a 404 that says
+ * `/books/OL7524304M.json` is diagnosable, one that says `/REDACTED` is not. Length, a mix of
+ * letters and digits, and the absence of a dot separate the two: `OL7524304M` is ten characters,
+ * `lalka-tom-pierwszy.txt` has a dot and no digits, `9780441013593` has no letters.
+ */
+const CREDENTIAL_PATH_SEGMENT =
+  /\/(?=[A-Za-z0-9_-]{24,}(?:\/|$))(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]*[A-Za-z][A-Za-z0-9_-]*/g;
+
+/**
+ * Strip API keys from URLs and URL-bearing text for safe error messages.
+ *
+ * Both shapes are covered because the message crosses a trust boundary: an MCP server and the
+ * agent extensions hand this text to a model, not only to the operator who owns the key.
+ */
 function sanitizeUrl(url: string): string {
-  return url.replace(/([?&])(api[-_]?key|key|secret|token)=[^&#]*/gi, "$1$2=REDACTED");
+  return url
+    .replace(/([?&])(api[-_]?key|key|secret|token)=[^&#]*/gi, "$1$2=REDACTED")
+    .replace(CREDENTIAL_PATH_SEGMENT, "/REDACTED");
 }
 
 /** HTTP failure with a redacted request URL in its message and a redacted response body. */

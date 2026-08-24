@@ -142,9 +142,53 @@ describe("bn provider", () => {
 
     const url = String(fetch.mock.calls[0]?.[0]);
     expect(url).toContain("title=placeholder");
-    expect(url).toContain("limit=3");
+    // Three wanted plus the margin that covers withdrawn records filtered out locally.
+    expect(url).toContain("limit=8");
     expect(url).not.toContain("search=");
     expect(url).not.toContain("q=");
+  });
+
+  it("asks for more than the caller wants, because withdrawn records are dropped locally", async () => {
+    // The catalog applies `limit` before this library filters `deleted`, so a bare limit returns
+    // fewer records than asked for - and a single-record lookup that lands on a withdrawn entry
+    // reports "not found" for a book the catalog holds.
+    const withdrawn = { ...RECORD, id: 1, deleted: true };
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const limit = Number(new URL(String(input)).searchParams.get("limit") ?? 10);
+      const bibs = [withdrawn, { ...RECORD, id: 2 }, { ...RECORD, id: 3 }].slice(0, limit);
+      return new Response(JSON.stringify({ bibs }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    expect(await create("bn").search!("placeholder", { limit: 2 })).toHaveLength(2);
+    await expect(create("bn").book({ id: "1011103" })).resolves.toMatchObject({ id: "2" });
+  });
+
+  it("reads a subfield in linear time, whatever the catalog put in it", async () => {
+    // `/\s*[/:;,=]$/` backtracked from every position of a long run of spaces: 50k spaces took
+    // 1.5 s, and the field's length is the catalog's to decide, not this library's.
+    stubRoutes({
+      "bibs.json": {
+        body: {
+          bibs: [
+            {
+              ...RECORD,
+              marc: {
+                fields: [{ "245": { subfields: [{ a: `${" ".repeat(50_000)}Title /` }] } }],
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const started = performance.now();
+    const book = await create("bn").book({ id: "1011103" });
+    expect(performance.now() - started).toBeLessThan(250);
+    expect(book.title).toBe("Title");
   });
 
   it("retries a search as an author query when the title index has nothing", async () => {

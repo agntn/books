@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InvalidInputError, NotFoundError } from "../../src/core/errors.ts";
+import { InvalidInputError, NotFoundError, ParseError } from "../../src/core/errors.ts";
 import { create } from "../../src/core/registry.ts";
 import { OPENLIBRARY_EDITION, OPENLIBRARY_WORK, stubRoutes } from "../helpers.ts";
 import "../../src/providers/openlibrary.ts";
@@ -123,6 +123,43 @@ describe("openlibrary provider", () => {
     await expect(create("openlibrary").book({ title: "nothing here" })).rejects.toThrow(
       NotFoundError,
     );
+  });
+
+  it("refuses a record key from the catalog that would climb the path", async () => {
+    // `works[0].key` is data the catalog supplies and it lands between two slashes of the next
+    // request; WHATWG resolves `..`, so an unchecked key sends the request somewhere else.
+    const fetch = stubRoutes({
+      ...ROUTES,
+      "/isbn/": {
+        body: { ...OPENLIBRARY_EDITION, works: [{ key: "/works/../../admin/secrets" }] },
+      },
+    });
+
+    await expect(create("openlibrary").book({ isbn: "9780441013593" })).rejects.toThrow(ParseError);
+    expect(fetch.mock.calls.some((call) => String(call[0]).includes("admin"))).toBe(false);
+  });
+
+  it("keeps an edition's record when its work is missing", async () => {
+    // The catalog is public-edited and does go inconsistent. The edition already carries the
+    // title, ISBN and page count; reporting "not found" for it would also send a fallback walk
+    // on to a lesser catalog.
+    stubRoutes({
+      ...ROUTES,
+      "/works/OL893414W.json": { body: { error: "notfound" }, status: 404 },
+    });
+
+    const book = await create("openlibrary").book({ isbn: "9780441013593" });
+
+    expect(book).toMatchObject({ title: "Placeholder Novel", pages: 544, isbn13: "9780441013593" });
+    expect(book.description).toBeUndefined();
+  });
+
+  it("still fails when the work itself was the thing asked for", async () => {
+    stubRoutes({
+      ...ROUTES,
+      "/works/OL893414W.json": { body: { error: "notfound" }, status: 404 },
+    });
+    await expect(create("openlibrary").book({ id: "OL893414W" })).rejects.toThrow(NotFoundError);
   });
 
   it("validates the ISBN before sending a request", async () => {

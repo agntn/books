@@ -31,6 +31,18 @@ const DEFAULT_BASE_URL = "https://data.bn.org.pl";
 /** Record ids are the numeric `id` of a bibliographic record. */
 const RECORD_ID = /^\d+$/;
 
+/** Punctuation a cataloguer appends to introduce the next subfield. */
+const ISBD_PUNCTUATION = new Set(["/", ":", ";", ",", "="]);
+
+/**
+ * Extra records to ask for when withdrawn ones may be filtered out.
+ *
+ * The catalog applies `limit` before this library drops `deleted` records, so asking for exactly
+ * what the caller wants returns fewer - and a single-record lookup that lands on a withdrawn
+ * entry reports "not found" for a book the catalog holds.
+ */
+const DELETED_MARGIN = 5;
+
 /** MARC tags this provider reads. */
 const TAG = {
   isbn: "020",
@@ -105,12 +117,18 @@ function marcValues(record: BnRecord, tag: string, subfield: string): string[] {
 function marcValue(record: BnRecord, tag: string, subfield: string): string | undefined {
   const value = marcValues(record, tag, subfield)[0];
   if (!value) return undefined;
-  return (
-    value
-      .replace(/\s*[/:;,=]$/, "")
-      .replace(/^"(.*)"$/, "$1")
-      .trim() || undefined
-  );
+  // Trimmed and sliced rather than matched: `/\s*[/:;,=]$/` backtracks from every position of a
+  // long run of spaces, which is quadratic on a field this library does not size - 50k spaces
+  // measured at 1.5 s. The value comes from the catalog, so its length is not ours to assume.
+  let trimmed = value.trim();
+  if (ISBD_PUNCTUATION.has(trimmed.at(-1) ?? "")) {
+    trimmed = trimmed.slice(0, -1).trim();
+  }
+  const unquoted =
+    trimmed.length > 1 && trimmed.startsWith('"') && trimmed.endsWith('"')
+      ? trimmed.slice(1, -1).trim()
+      : trimmed;
+  return unquoted || undefined;
 }
 
 /** `295 s. ;` and `XII, 400 stron` both mean a page count. */
@@ -301,9 +319,14 @@ class Bn extends Provider {
     id?: string;
     limit?: number;
   }): Promise<BnRecord[]> {
-    const url = `${this.baseUrl}/api/institutions/bibs.json${buildQuery({ ...params })}`;
+    const want = params.limit;
+    const url = `${this.baseUrl}/api/institutions/bibs.json${buildQuery({
+      ...params,
+      limit: want === undefined ? undefined : want + DELETED_MARGIN,
+    })}`;
     const data = await this.getJSON<BnResponse>(url);
-    return (data.bibs ?? []).filter((record) => !record.deleted);
+    const live = (data.bibs ?? []).filter((record) => !record.deleted);
+    return want === undefined ? live : live.slice(0, want);
   }
 }
 

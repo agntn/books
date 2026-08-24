@@ -144,6 +144,19 @@ answered; three candidates were dropped.
   of the book: a search for Dune can come back `gre`
 - `openlibrary.book()` resolves at most `MAX_AUTHOR_LOOKUPS` (5) author names; an anthology's
   remaining contributors are dropped rather than fanned out into dozens of requests
+- Record keys arriving in a provider's response go through `recordPath()` before they are
+  interpolated into the next request path. WHATWG resolves `..` inside a path, so an unchecked
+  `works[0].key` would send the request to a different resource on the same host
+- `sanitizeUrl` redacts credentials in query parameters *and* in a path segment (the Alchemy and
+  Infura shape). The path rule is deliberately narrow - 24+ characters, letters and digits, no
+  dot - so `OL7524304M`, an ISBN and `lalka-tom-pierwszy.txt` survive: a 404 naming the resource
+  is diagnosable, `/REDACTED` is not
+- `bn.query()` asks for `limit + DELETED_MARGIN` because the catalog applies `limit` before
+  withdrawn records are filtered out here. Without the margin a single-record lookup that lands
+  on a withdrawn entry reports "not found" for a book the catalog holds
+- `readSlice()` checks that a file URL is http(s) but does **not** pin the host: Gutenberg serves
+  its texts from a different host than the API that names them, so a provider handing out a URL
+  is trusted about where the file lives
 - Writing extension files: **the editor tooling has twice injected raw control bytes** where
   Unicode escape sequences were intended, leaving a file that greps as binary. Check with
   `cat -A` and repair with a script that builds the escapes programmatically

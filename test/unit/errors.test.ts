@@ -42,6 +42,34 @@ describe("secret redaction", () => {
     expect(error.body).not.toContain("SECRET");
   });
 
+  it("redacts a credential carried in a path segment, not only in a query", () => {
+    // Alchemy, Infura and QuickNode key by path, where a query-parameter rule never looks - and
+    // this message reaches a model through the MCP server, not only the operator who owns it.
+    const error = new HTTPError(
+      429,
+      "https://mainnet.vendor.test/v3/9aa3d95b3bc440fa88ea12eaa4456161",
+      undefined,
+      "x",
+    );
+    expect(error.message).toContain("/v3/REDACTED");
+    expect(error.message).not.toContain("9aa3d95b3bc440fa88ea12eaa4456161");
+    expect(error.message).toContain("mainnet.vendor.test");
+  });
+
+  it("leaves the identifiers this library actually requests intact", () => {
+    // The negative control: redacting these would trade a diagnosable 404 for a useless one.
+    for (const url of [
+      "https://openlibrary.org/books/OL7524304M.json",
+      "https://openlibrary.org/works/OL893414W/ratings.json",
+      "https://www.gutenberg.org/ebooks/84.txt.utf-8",
+      "https://wolnelektury.pl/media/book/txt/lalka-tom-pierwszy.txt",
+      "https://lubimyczytac.pl/ksiazka/4942534/diuna",
+      "https://s.lubimyczytac.pl/upload/books/4942000/4942534/1177545-352x500.jpg",
+    ]) {
+      expect(new HTTPError(404, url, undefined, "x").message).toContain(url);
+    }
+  });
+
   it("keeps rawUrl out of serialized errors", () => {
     const error = new HTTPError(500, "https://x.test", undefined, "x");
     expect(Object.keys({ ...error })).not.toContain("rawUrl");

@@ -18,7 +18,7 @@ import type {
 } from "../core/types.ts";
 import { Provider, assertBookQuery, assertQuery } from "../core/provider.ts";
 import { buildQuery } from "../core/client.ts";
-import { HTTPError, InvalidInputError, NotFoundError } from "../core/errors.ts";
+import { HTTPError, InvalidInputError, NotFoundError, ParseError } from "../core/errors.ts";
 import { toIsbn10, toIsbn13 } from "../core/isbn.ts";
 import { register } from "../core/registry.ts";
 import { normalizeText, parseYear, uniqueStrings } from "../core/text.ts";
@@ -110,6 +110,27 @@ interface OpenLibraryAuthor {
   personal_name?: string;
 }
 
+/** Open Library record keys, as they appear in a response: `/works/OL893414W`, `/authors/OL79034A`. */
+const RECORD_KEY = /^\/?(works|books|authors)\/(OL\d+[AMW])$/;
+
+/**
+ * Turn a key from a response into a request path, refusing anything else.
+ *
+ * A record's `works[0].key` is data the catalog supplies, and it lands between two slashes of
+ * the next request. WHATWG resolves `..` inside a path, so a key of `/works/../../admin` would
+ * send this library's request to a different resource on the same host - answered, parsed, and
+ * returned as if it were a book. Types cannot see that; a shape check can.
+ *
+ * @throws {ParseError} When the key does not have the documented shape.
+ */
+function recordPath(key: string | undefined, provider: string): string {
+  const match = key?.match(RECORD_KEY);
+  if (!match) {
+    throw new ParseError(`record key is not an Open Library key: ${key}`, provider);
+  }
+  return `${match[1]}/${match[2]}`;
+}
+
 /** Unwrap a description that may be a bare string or a `/type/text` node. */
 function readText(value: OpenLibraryText | undefined): string | undefined {
   const text = typeof value === "string" ? value : value?.value;
@@ -185,7 +206,7 @@ class OpenLibrary extends Provider {
       .filter((key): key is string => Boolean(key));
 
     const [work, ratings, earlyAuthors] = await Promise.all([
-      found ?? (workKey ? this.fetchWork(workKey) : undefined),
+      found ?? (workKey ? this.fetchOptionalWork(workKey, edition !== undefined) : undefined),
       workKey ? this.fetchRatings(workKey) : undefined,
       editionAuthorKeys.length > 0 ? this.fetchAuthors(editionAuthorKeys) : undefined,
     ]);
@@ -272,8 +293,33 @@ class OpenLibrary extends Provider {
     return { work: await this.fetchWork(key) };
   }
 
+  /**
+   * The work behind an edition, or `undefined` when only the work is missing.
+   *
+   * An edition already carries the title, ISBN, publisher and page count; the work adds the
+   * blurb and the subjects. When the edition was fetched successfully and its work key 404s -
+   * the catalog is edited by the public and does go inconsistent - returning the record without
+   * a blurb beats reporting a book that this catalog demonstrably holds as "not found", which
+   * is also what a fallback walk would act on.
+   */
+  private async fetchOptionalWork(
+    key: string,
+    optional: boolean,
+  ): Promise<OpenLibraryWork | undefined> {
+    try {
+      return await this.fetchWork(key);
+    } catch (error) {
+      if (optional && (error instanceof NotFoundError || error instanceof ParseError)) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   private fetchWork(key: string): Promise<OpenLibraryWork> {
-    return this.getJSON<OpenLibraryWork>(`${this.baseUrl}/${key.replace(/^\//, "")}.json`);
+    return this.getJSON<OpenLibraryWork>(
+      `${this.baseUrl}/${recordPath(key, OpenLibrary.key)}.json`,
+    );
   }
 
   /**
@@ -285,7 +331,7 @@ class OpenLibrary extends Provider {
   private async fetchRatings(key: string): Promise<Book["rating"]> {
     try {
       const data = await this.getJSON<OpenLibraryRatings>(
-        `${this.baseUrl}/${key.replace(/^\//, "")}/ratings.json`,
+        `${this.baseUrl}/${recordPath(key, OpenLibrary.key)}/ratings.json`,
       );
       return toRating(
         data.summary?.average ?? undefined,
@@ -307,7 +353,9 @@ class OpenLibrary extends Provider {
       keys
         .slice(0, MAX_AUTHOR_LOOKUPS)
         .map((key) =>
-          this.getJSON<OpenLibraryAuthor>(`${this.baseUrl}/${key.replace(/^\//, "")}.json`),
+          this.getJSON<OpenLibraryAuthor>(
+            `${this.baseUrl}/${recordPath(key, OpenLibrary.key)}.json`,
+          ),
         ),
     );
     return uniqueStrings(records.map((author) => author.name ?? author.personal_name));
