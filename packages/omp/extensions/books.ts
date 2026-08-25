@@ -8,6 +8,8 @@ import { Text } from "@oh-my-pi/pi-coding-agent";
 import { renderStatusLine } from "@oh-my-pi/pi-coding-agent/tui";
 
 import type * as BooksModule from "../../../dist/index.d.mts";
+import type { OutputTheme, RenderedToolResult, RenderOptions } from "../../shared/tui.ts";
+import { renderToolResult } from "../../shared/tui.ts";
 
 const sourceModulePath = fileURLToPath(new URL("../../../src/index.ts", import.meta.url));
 let booksModulePromise: Promise<typeof BooksModule> | undefined;
@@ -62,6 +64,11 @@ function textResult(text: string): BooksToolResult {
     content: [{ type: "text", text: sanitizeTerminalBlock(text) }],
     details: undefined,
   };
+}
+
+/** Render a finished call's output: the shared bounded preview, whole once expanded. */
+function resultLine(result: RenderedToolResult, options: RenderOptions, theme: OutputTheme): Text {
+  return new Text(renderToolResult(result, options, theme), 0, 0);
 }
 
 /** Label a lookup by whatever the caller used to name the book. */
@@ -153,6 +160,7 @@ export default function booksExtension(pi: ExtensionAPI): void {
     renderCall(args, options, theme) {
       return statusLine("Books Get", describeQuery(args), options, theme);
     },
+    renderResult: resultLine,
     async execute(_toolCallId, params): Promise<BooksToolResult> {
       const lib = await loadLibrary();
       const query = {
@@ -192,6 +200,7 @@ export default function booksExtension(pi: ExtensionAPI): void {
     renderCall(args, options, theme) {
       return statusLine("Books Search", String(args.query), options, theme);
     },
+    renderResult: resultLine,
     async execute(_toolCallId, params): Promise<BooksToolResult> {
       const lib = await loadLibrary();
       const options = { limit: params.limit };
@@ -234,6 +243,7 @@ export default function booksExtension(pi: ExtensionAPI): void {
     renderCall(args, options, theme) {
       return statusLine("Books Text", describeQuery(args), options, theme);
     },
+    renderResult: resultLine,
     async execute(_toolCallId, params): Promise<BooksToolResult> {
       const lib = await loadLibrary();
       const query = { title: params.title, author: params.author, id: params.id };
@@ -260,6 +270,7 @@ export default function booksExtension(pi: ExtensionAPI): void {
     renderCall(_args, options, theme) {
       return statusLine("Books Providers", "registered catalogs", options, theme);
     },
+    renderResult: resultLine,
     async execute(): Promise<BooksToolResult> {
       const lib = await loadLibrary();
       return textResult(lib.formatProviders(lib.listProviders()));

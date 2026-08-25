@@ -3,9 +3,12 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 import type * as BooksModule from "../../../dist/index.d.mts";
+import type { OutputTheme, RenderedToolResult, RenderOptions } from "../../shared/tui.ts";
+import { renderToolResult } from "../../shared/tui.ts";
 
 const sourceModuleUrl = new URL("../../../src/index.ts", import.meta.url);
 const distributionModuleUrl = new URL("../../../dist/index.mjs", import.meta.url);
@@ -27,6 +30,15 @@ function textResult(text: string): BooksToolResult {
     content: [{ type: "text", text }],
     details: undefined,
   };
+}
+
+/**
+ * Render a finished call's output: the shared bounded preview, whole once expanded.
+ *
+ * Pi passes `(result, options, theme, context)`; the preview reads none of the context.
+ */
+function resultLine(result: RenderedToolResult, options: RenderOptions, theme: OutputTheme): Text {
+  return new Text(renderToolResult(result, options, theme), 0, 0);
 }
 
 const providerParameter = Type.Optional(
@@ -76,6 +88,7 @@ export default function booksExtension(pi: ExtensionAPI): void {
       id: bookIdParameter,
       provider: providerParameter,
     }),
+    renderResult: resultLine,
     async execute(_toolCallId, params): Promise<BooksToolResult> {
       const lib = await loadLibrary();
       const query = {
@@ -115,6 +128,7 @@ export default function booksExtension(pi: ExtensionAPI): void {
       ),
       provider: providerParameter,
     }),
+    renderResult: resultLine,
     async execute(_toolCallId, params): Promise<BooksToolResult> {
       const lib = await loadLibrary();
       const options = { limit: params.limit };
@@ -158,6 +172,7 @@ export default function booksExtension(pi: ExtensionAPI): void {
       ),
       provider: providerParameter,
     }),
+    renderResult: resultLine,
     async execute(_toolCallId, params): Promise<BooksToolResult> {
       const lib = await loadLibrary();
       const query = { title: params.title, author: params.author, id: params.id };
@@ -183,6 +198,7 @@ export default function booksExtension(pi: ExtensionAPI): void {
       "Use books_providers to list provider keys and their capabilities: which catalogs search, which resolve an ISBN, which carry full texts and which carry reader ratings.",
     ],
     parameters: Type.Object({}),
+    renderResult: resultLine,
     async execute(): Promise<BooksToolResult> {
       const lib = await loadLibrary();
       return textResult(lib.formatProviders(lib.listProviders()));

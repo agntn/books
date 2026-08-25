@@ -130,6 +130,8 @@ answered; three candidates were dropped.
   ISBN when it parses as one
 - `packages/pi/extensions/books.ts`, `packages/omp/extensions/books.ts` - agent extensions;
   type-import from `dist/index.d.mts`. The OMP loader keeps both dynamic imports literal
+- `packages/shared/tui.ts` - collapsed result previews for both extensions: ten lines cut to a
+  200-character width, the complete text once the row is expanded
 
 ## Constraints
 
@@ -163,7 +165,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 17 files / 137 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 19 files / 166 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 Verified beyond the suite:
 
