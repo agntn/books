@@ -5,6 +5,13 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Value } from "typebox/value";
+
+/** The Pi TUI is served by the harness at runtime; the tests only need a Text that captures. */
+vi.mock("@earendil-works/pi-tui", () => ({
+  Text: class {
+    constructor(readonly text: string) {}
+  },
+}));
 import {
   FAKE_TEXT_BYTES,
   GUTENDEX_BOOK,
@@ -130,6 +137,36 @@ describe("books Pi extension", () => {
     const text = resultText(result as { content: { text?: string }[] });
     expect(text).toContain("Rozdział");
     expect(text).toContain("read on from 9");
+  });
+
+  it("previews a collapsed result bounded and hands it back whole once expanded", () => {
+    const tools = registerExtensionTools();
+    for (const tool of tools.values()) expect(tool.renderResult).toBeDefined();
+
+    const blurb = `lead ${"x".repeat(3000)}`;
+    const result = { content: [{ type: "text" as const, text: blurb }], details: undefined };
+    const render = requireTool(tools, "books_text").renderResult;
+
+    const collapsed = render?.(
+      result,
+      { expanded: false, isPartial: false },
+      {} as never,
+      {} as never,
+    ) as unknown as {
+      text: string;
+    };
+    const opened = render?.(
+      result,
+      { expanded: true, isPartial: false },
+      {} as never,
+      {} as never,
+    ) as unknown as {
+      text: string;
+    };
+
+    expect(collapsed.text).toHaveLength(200);
+    expect(collapsed.text.endsWith("…")).toBe(true);
+    expect(opened.text).toBe(blurb);
   });
 
   it("lists providers without contacting one", async () => {

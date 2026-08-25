@@ -130,6 +130,30 @@ describe("books OMP extension", () => {
     expect(rendered.text).toContain("9780441013593");
   });
 
+  it("previews a collapsed result bounded and hands it back whole once expanded", () => {
+    const { tools } = registerExtensionTools();
+    for (const tool of tools.values()) expect(tool.renderResult).toBeDefined();
+
+    const blurb = `lead ${"x".repeat(3000)}`;
+    const result = { content: [{ type: "text" as const, text: blurb }], details: undefined };
+    const render = requireTool(tools, "books_text").renderResult;
+
+    const collapsed = render?.(
+      result,
+      { expanded: false, isPartial: false },
+      {} as never,
+    ) as unknown as { text: string };
+    const opened = render?.(
+      result,
+      { expanded: true, isPartial: false },
+      {} as never,
+    ) as unknown as { text: string };
+
+    expect(collapsed.text).toHaveLength(200);
+    expect(collapsed.text.endsWith("…")).toBe(true);
+    expect(opened.text).toBe(blurb);
+  });
+
   it("keeps line breaks in a text slice while removing control bytes", async () => {
     stubRoutes(ROUTES);
     const tool = requireTool(registerExtensionTools().tools, "books_text");
