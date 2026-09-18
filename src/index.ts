@@ -50,6 +50,7 @@ export {
   isIsbn10,
   isIsbn13,
   isbn10To13,
+  isbn13To10,
   normalizeIsbn,
   toIsbn10,
   toIsbn13,

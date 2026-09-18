@@ -6,6 +6,7 @@ import {
   isIsbn10,
   isIsbn13,
   isbn10To13,
+  isbn13To10,
   normalizeIsbn,
   toIsbn10,
   toIsbn13,
@@ -67,6 +68,22 @@ describe("isbn10To13", () => {
 
   it("refuses an invalid ISBN-10", () => {
     expect(() => isbn10To13("0441013598")).toThrow(InvalidInputError);
+  });
+});
+
+describe("isbn13To10", () => {
+  it("drops the 978 prefix and recomputes the check digit, X included", () => {
+    expect(isbn13To10("9780441013593")).toBe("0441013597");
+    expect(isbn13To10("978-83-7054-091-3")).toBe("8370540910");
+    expect(isbn13To10("9780804429573")).toBe("080442957X");
+  });
+
+  it("answers undefined for a 979 number, which has no ten-digit form", () => {
+    expect(isbn13To10("9791090636071")).toBeUndefined();
+  });
+
+  it("refuses an invalid ISBN-13", () => {
+    expect(() => isbn13To10("9780441013539")).toThrow(InvalidInputError);
   });
 });
 

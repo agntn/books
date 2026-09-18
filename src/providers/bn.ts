@@ -20,7 +20,7 @@ import type {
 import { Provider, assertBookQuery, assertQuery } from "../core/provider.ts";
 import { buildQuery } from "../core/client.ts";
 import { InvalidInputError, NotFoundError } from "../core/errors.ts";
-import { isbn10To13, toIsbn10, toIsbn13 } from "../core/isbn.ts";
+import { isIsbn10, isbn10To13, isbn13To10, toIsbn10, toIsbn13 } from "../core/isbn.ts";
 import { register } from "../core/registry.ts";
 import { normalizeText, parseYear, uniqueStrings } from "../core/text.ts";
 import { MAX_SUBJECTS, clampMaxResults } from "../core/types.ts";
@@ -168,6 +168,15 @@ function readIsbns(record: BnRecord): { isbn10?: string; isbn13?: string } {
   return { isbn10: toIsbn10(isbn10), isbn13 };
 }
 
+/**
+ * Both lengths of one ISBN. The catalog matches the string the cataloguer typed, and editions
+ * before 2007 were catalogued with ten digits, so a caller's thirteen alone would miss them.
+ */
+function isbnForms(isbn: string): string[] {
+  const other = isIsbn10(isbn) ? isbn10To13(isbn) : isbn13To10(isbn);
+  return other ? [isbn, other] : [isbn];
+}
+
 /** Title, subtitle and the statement of responsibility, as MARC 245 records them. */
 function readTitle(record: BnRecord): { title: string; subtitle?: string } {
   const title = marcValue(record, TAG.title, "a") ?? record.title?.split(" / ")[0]?.trim() ?? "";
@@ -298,7 +307,12 @@ class Bn extends Provider {
     }
 
     if (query.isbn) {
-      const [record] = await this.query({ isbnIssn: query.isbn, limit: 1 });
+      const forms = isbnForms(query.isbn);
+      const [record] = await this.query({
+        isbnIssn: forms.join(" | "),
+        boolean: forms.length > 1 ? "true" : undefined,
+        limit: 1,
+      });
       if (!record) throw new NotFoundError(`ISBN ${query.isbn}`, Bn.key);
       return record;
     }
@@ -321,6 +335,8 @@ class Bn extends Provider {
     title?: string;
     author?: string;
     isbnIssn?: string;
+    /** Turns on `|` between alternatives inside one field */
+    boolean?: "true";
     id?: string;
     limit?: number;
   }): Promise<BnRecord[]> {

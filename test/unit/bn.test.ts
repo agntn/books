@@ -135,6 +135,29 @@ describe("bn provider", () => {
     expect(book.isbn13).toBe("9788370540913");
   });
 
+  it("asks for an ISBN in both lengths, since the catalog matches what was typed", async () => {
+    const fetch = stubRoutes(ROUTES);
+
+    await create("bn").book({ isbn: "978-83-7054-091-3" });
+    await create("bn").book({ isbn: "8370540910" });
+
+    const [first, second] = fetch.mock.calls.map((call) => new URL(String(call[0])).searchParams);
+    expect(first?.get("isbnIssn")).toBe("9788370540913 | 8370540910");
+    expect(first?.get("boolean")).toBe("true");
+    expect(second?.get("isbnIssn")).toBe("8370540910 | 9788370540913");
+    expect(second?.get("boolean")).toBe("true");
+  });
+
+  it("sends a 979 number alone, since it has no ten-digit form", async () => {
+    const fetch = stubRoutes(ROUTES);
+
+    await create("bn").book({ isbn: "9791090636071" });
+
+    const params = new URL(String(fetch.mock.calls[0]?.[0])).searchParams;
+    expect(params.get("isbnIssn")).toBe("9791090636071");
+    expect(params.has("boolean")).toBe(false);
+  });
+
   it("sends only documented parameters, since the API ignores the rest", async () => {
     const fetch = stubRoutes(ROUTES);
 
