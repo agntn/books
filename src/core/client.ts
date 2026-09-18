@@ -1,6 +1,7 @@
 /** HTTP client wrapper for Books providers */
 
 import { ofetch } from "ofetch";
+import type { FetchContext } from "ofetch";
 import { normalizeError } from "./errors.ts";
 import { trimPartialUtf8 } from "./text.ts";
 import { version } from "../version.ts";
@@ -35,6 +36,23 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const RETRIES = 1;
 
 /**
+ * A signal per attempt: ofetch arms its timeout once and hands the retry the same signal, so the
+ * repeat after a timeout dies unsent, and the one after a dropped connection inherits its clock.
+ */
+function armTimeout({ options }: FetchContext): void {
+  if (options.timeout) options.signal = AbortSignal.timeout(options.timeout);
+}
+
+/** Retry and timeout policy shared by every request. */
+function attempts(options?: ClientOptions) {
+  return {
+    timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
+    retry: RETRIES,
+    onRequest: armTimeout,
+  };
+}
+
+/**
  * Fetch JSON with Books headers and a 15-second default timeout.
  *
  * Transport failures are normalized before they leave this boundary.
@@ -47,8 +65,7 @@ export async function getJSON<T>(url: string, options?: ClientOptions): Promise<
         Accept: "application/json",
         "User-Agent": USER_AGENT,
       },
-      timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
-      retry: RETRIES,
+      ...attempts(options),
     });
   } catch (error) {
     throw normalizeError(error, options?.provider, url);
@@ -70,8 +87,7 @@ export async function getText(url: string, options?: ClientOptions): Promise<str
         Accept: "text/html,application/xhtml+xml",
         "User-Agent": USER_AGENT,
       },
-      timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
-      retry: RETRIES,
+      ...attempts(options),
     });
   } catch (error) {
     throw normalizeError(error, options?.provider, url);
@@ -126,8 +142,7 @@ export async function readTextSlice(
         Range: `bytes=${offset}-${offset + maxBytes - 1}`,
         "User-Agent": USER_AGENT,
       },
-      timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
-      retry: RETRIES,
+      ...attempts(options),
     });
 
     const body = new Uint8Array(response._data ?? new ArrayBuffer(0));
