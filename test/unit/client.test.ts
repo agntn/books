@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildQuery, readTextSlice } from "../../src/core/client.ts";
+import { buildQuery, getJSON, readTextSlice } from "../../src/core/client.ts";
 import { FAKE_TEXT, FAKE_TEXT_BYTES } from "../helpers.ts";
 import { stubRoutes } from "../helpers.ts";
 
@@ -7,6 +7,67 @@ const FILE_URL = "https://example.test/book.txt";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+type Signal = AbortSignal | null | undefined;
+
+/** Stub fetch as undici would: an aborted signal rejects unsent, a live one reaches `respond`. */
+function stubAttempts(respond: (attempt: number, signal: Signal) => Promise<Response>) {
+  let attempt = 0;
+  const fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+    init?.signal?.aborted
+      ? Promise.reject(init.signal.reason)
+      : respond((attempt += 1), init?.signal),
+  );
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+/** A request that never answers: it settles only when its signal aborts. */
+function stall(signal: Signal): Promise<Response> {
+  return new Promise((_, reject) => {
+    signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+}
+
+/** A connection reset `delay` milliseconds in, before any byte of a response. */
+function reset(delay: number): Promise<Response> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new TypeError("fetch failed")), delay);
+  });
+}
+
+function json(body: unknown): Response {
+  return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+}
+
+describe("retry", () => {
+  it("sends the repeat after a timeout instead of aborting it on arrival", async () => {
+    const fetch = stubAttempts((attempt, signal) =>
+      attempt === 1 ? stall(signal) : Promise.resolve(json({ ok: true })),
+    );
+
+    await expect(getJSON(FILE_URL, { timeout: 50 })).resolves.toEqual({ ok: true });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives the repeat after a dropped connection the whole timeout", async () => {
+    const lifetimes: number[] = [];
+    stubAttempts((attempt, signal) => {
+      if (attempt === 1) return reset(150);
+      const started = performance.now();
+      signal?.addEventListener("abort", () => lifetimes.push(performance.now() - started), {
+        once: true,
+      });
+      return stall(signal);
+    });
+
+    await expect(getJSON(FILE_URL, { timeout: 200 })).rejects.toMatchObject({
+      name: "HTTPError",
+      statusCode: 0,
+    });
+    expect(lifetimes[0]).toBeGreaterThanOrEqual(150);
+  });
 });
 
 describe("buildQuery", () => {

@@ -91,7 +91,9 @@ answered; three candidates were dropped.
 - `clampTextBytes()` bounds one slice at `MAX_TEXT_BYTES`; the ceiling protects the caller's
   context window and has nothing to do with which library serves the file
 - The HTTP client retries **once**, and only because every request here is a GET. Gutendex made
-  the case for it during the audit
+  the case for it during the audit. Each attempt gets its own `AbortSignal.timeout` from an
+  `onRequest` hook: ofetch 1.5.1 arms its timer once and hands the retry the first attempt's
+  signal, so without the hook a retry after a timeout never leaves the process
 - `jsonLd()` parses a block, and when that fails, retries with everything from `"review"` onwards
   cut off. It is not defensive coding - it is the only way the Lubimyczytać node parses at all
 - Provider construction never checks credentials, which keeps `create()` total so `listProviders()`
@@ -165,7 +167,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 19 files / 166 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 19 files / 168 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 Verified beyond the suite:
 
