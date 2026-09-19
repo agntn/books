@@ -63,6 +63,29 @@ export function isbn10To13(value: string): string {
   return `${body}${(10 - (sum % 10)) % 10}`;
 }
 
+/**
+ * Convert a valid ISBN-13 to its ISBN-10 form.
+ *
+ * Only the `978` range has one; a `979` number cannot be written in ten digits.
+ *
+ * @returns The ISBN-10, or `undefined` for a `979` number.
+ * @throws {InvalidInputError} When `value` is not a valid ISBN-13.
+ */
+export function isbn13To10(value: string): string | undefined {
+  const isbn = normalizeIsbn(value);
+  if (!isIsbn13(isbn)) {
+    throw new InvalidInputError(`not a valid ISBN-13: ${value}`);
+  }
+  if (!isbn.startsWith("978")) return undefined;
+  const body = isbn.slice(3, 12);
+  let sum = 0;
+  for (let index = 0; index < 9; index++) {
+    sum += (10 - index) * Number(body[index]);
+  }
+  const check = (11 - (sum % 11)) % 11;
+  return `${body}${check === 10 ? "X" : check}`;
+}
+
 /** Normalize any valid ISBN to its 13-digit form, or `undefined` when it is not one. */
 export function toIsbn13(value: string | undefined): string | undefined {
   if (!value) return undefined;

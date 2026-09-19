@@ -46,7 +46,10 @@ answered; three candidates were dropped.
   and the API answers with the head of the catalog - `?search=` and `?q=` both returned records
   that look real for a query nobody made. Each record carries ~3.4 kB of MARC, which is where the clean
   data is; the flat fields concatenate subfields (`author` repeats the name with the publisher
-  glued in between).
+  glued in between). **`isbnIssn` matches the string the cataloguer typed**, not the number:
+  `9788370540791` finds nothing while `8370540791` finds three records, and `0575083182` finds
+  nothing while `9780575083189` finds two (2026-09-19). `boolean=true` turns on the documented
+  `|` between alternatives inside one field, and `9788370540791 | 8370540791` finds the three.
 - **Lubimyczytać** (`lubimyczytac.pl`): `/szukaj/ksiazki?phrase=` and `/ksiazka/{id}/{slug}`
   verified. `/ksiazka/{id}` without the slug is a 404, so an id here is the path pair. **Its search
   cannot resolve an ISBN** - `phrase=9788381884105` answered with unrelated books, hence
@@ -158,6 +161,9 @@ answered; three candidates were dropped.
 - `bn.query()` asks for `limit + DELETED_MARGIN` because the catalog applies `limit` before
   withdrawn records are filtered out here. Without the margin a single-record lookup that lands
   on a withdrawn entry reports "not found" for a book the catalog holds
+- `bn.locate()` sends an ISBN in both lengths (`isbnForms()`), joined with `|` under
+  `boolean=true`: every edition before 2007 was catalogued with ten digits, and `isbnIssn` does
+  not convert. A `979` number has no ten-digit form and goes alone
 - `readSlice()` checks that a file URL is http(s) but does **not** pin the host: Gutenberg serves
   its texts from a different host than the API that names them, so a provider handing out a URL
   is trusted about where the file lives
@@ -167,7 +173,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 19 files / 168 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 19 files / 173 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 Verified beyond the suite:
 
