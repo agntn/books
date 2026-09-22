@@ -10,7 +10,7 @@ import "../../src/providers/gutendex.ts";
 
 const ROUTES = {
   "/books/84": { body: GUTENDEX_BOOK },
-  "/books?search": { body: { count: 1, results: [GUTENDEX_BOOK] } },
+  "/books/?search": { body: { count: 1, results: [GUTENDEX_BOOK] } },
   "84.txt.utf-8": { body: "", bytes: FAKE_TEXT_BYTES },
 };
 
@@ -28,6 +28,62 @@ describe("gutendex provider", () => {
       ratings: false,
     });
   });
+
+  it("requests the canonical search URL and preserves query text", async () => {
+    const fetch = stubRoutes({
+      "/books": { body: { count: 1, results: [GUTENDEX_BOOK, GUTENDEX_BOOK] } },
+    });
+
+    const matches = await create("gutendex").search!("title & author", { limit: 1 });
+
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      "https://gutendex.com/books/?search=title+%26+author",
+      expect.anything(),
+    );
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.id).toBe("84");
+  });
+
+  it.each(["book", "text"] as const)(
+    "requests the canonical detail URL for %s by id",
+    async (operation) => {
+      const fetch = stubRoutes(ROUTES);
+      const provider = create("gutendex", { baseUrl: "https://catalog.test/api" });
+
+      const result = await provider[operation]!({ id: "84" });
+
+      expect(fetch).toHaveBeenNthCalledWith(
+        1,
+        "https://catalog.test/api/books/84/",
+        expect.anything(),
+      );
+      expect(fetch).toHaveBeenCalledTimes(operation === "text" ? 2 : 1);
+      expect(result.title).toBe("Placeholder Gothic Novel");
+    },
+  );
+
+  it.each(["book", "text"] as const)(
+    "requests the canonical search URL for %s by title",
+    async (operation) => {
+      const fetch = stubRoutes({
+        ...ROUTES,
+        "/books": { body: { count: 1, results: [GUTENDEX_BOOK] } },
+      });
+
+      const result = await create("gutendex")[operation]!({
+        title: "placeholder",
+        author: "Mary",
+      });
+
+      expect(fetch).toHaveBeenNthCalledWith(
+        1,
+        "https://gutendex.com/books/?search=placeholder+Mary",
+        expect.anything(),
+      );
+      expect(fetch).toHaveBeenCalledTimes(operation === "text" ? 2 : 1);
+      expect(result.title).toBe("Placeholder Gothic Novel");
+    },
+  );
 
   it("maps a catalog record, keeping every downloadable format", async () => {
     stubRoutes(ROUTES);

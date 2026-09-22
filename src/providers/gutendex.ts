@@ -108,7 +108,7 @@ class Gutendex extends Provider {
 
   override async search(query: string, options?: SearchOptions): Promise<BookMatch[]> {
     assertQuery(query, Gutendex.key);
-    const url = `${this.baseUrl}/books${buildQuery({ search: query })}`;
+    const url = `${this.baseUrl}/books/${buildQuery({ search: query })}`;
     const data = await this.getJSON<GutendexResponse>(url);
     return (data.results ?? [])
       .slice(0, clampMaxResults(options?.limit, MAX_RESULTS))
@@ -179,7 +179,7 @@ class Gutendex extends Provider {
           Gutendex.key,
         );
       }
-      return await this.getJSON<GutendexBook>(`${this.baseUrl}/books/${id}`);
+      return await this.getJSON<GutendexBook>(`${this.baseUrl}/books/${id}/`);
     }
 
     if (!query.title) {
@@ -188,7 +188,7 @@ class Gutendex extends Provider {
 
     const search = searchTerms(query);
     const data = await this.getJSON<GutendexResponse>(
-      `${this.baseUrl}/books${buildQuery({ search })}`,
+      `${this.baseUrl}/books/${buildQuery({ search })}`,
     );
     const book = data.results?.[0];
     if (!book) {
