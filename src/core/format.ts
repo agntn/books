@@ -35,6 +35,7 @@ export function formatBookLine(match: BookMatch): string {
     match.isbn ? `ISBN ${match.isbn}` : undefined,
     match.rating ? formatRating(match.rating) : undefined,
     match.id !== undefined ? `id=${match.id}` : undefined,
+    match.url,
   ].filter(Boolean);
   const tail = details.length > 0 ? `  (${details.join(", ")})` : "";
   return `${oneLine(match.title)} - ${formatAuthors(match.authors)}${tail}`;
@@ -69,6 +70,7 @@ function bookFields(book: Book): string[] {
     ["Rating", book.rating ? formatRating(book.rating) : undefined],
     ["Id", book.id],
     ["Formats", book.formats?.map((format) => format.type).join(", ") || undefined],
+    ["Cover", book.cover],
   ];
   return fields
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
@@ -157,7 +159,8 @@ export function formatProviders(listings: ProviderListing[]): string {
         ? ` [${listing.envKey} set]`
         : ` [needs ${listing.envKey}]`
       : "";
-    return `  ${listing.name}: ${capabilities || "(nothing)"}${credential}`;
+    const endpoint = listing.defaultUrl ? ` ${listing.defaultUrl}` : "";
+    return `  ${listing.name}: ${capabilities || "(nothing)"}${credential}${endpoint}`;
   });
   return `Registered providers (${listings.length}):\n${lines.join("\n")}`;
 }

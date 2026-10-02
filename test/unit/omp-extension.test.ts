@@ -1,23 +1,16 @@
-import * as TypeBox from "@oh-my-pi/omptype/typebox";
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@oh-my-pi/pi-coding-agent";
+import { ToolInputError, wireSchema } from "@agntn/tools";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  Theme,
+  ToolDefinition,
+} from "@oh-my-pi/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-/**
- * The host serves these modules to loaded extensions at runtime; under vitest the renderers are
- * exercised against capturing stand-ins instead of the OMP TUI.
- */
-vi.mock("@oh-my-pi/pi-coding-agent", () => ({
-  Text: class {
-    constructor(
-      readonly text: string,
-      readonly paddingX?: number,
-      readonly paddingY?: number,
-    ) {}
-  },
-}));
-vi.mock("@oh-my-pi/pi-coding-agent/tui", () => ({
-  renderStatusLine: (options: unknown) => JSON.stringify(options),
-}));
+/** Compiled OMP injects no TUI barrel, so loading it has to fail the test. */
+vi.mock("@oh-my-pi/pi-coding-agent/tui", () => {
+  throw new Error("The OMP host does not inject the TUI barrel");
+});
 
 import {
   FAKE_TEXT_BYTES,
@@ -28,19 +21,42 @@ import {
   stubRoutes,
 } from "../helpers.ts";
 import { MAX_TEXT_BYTES } from "../../src/core/types.ts";
-import booksOmpExtension, { sanitizeTerminalText } from "../../packages/omp/extensions/books.ts";
+import { bookTools } from "../../src/tools.ts";
+import booksOmpExtension from "../../packages/omp/extensions/books.ts";
 
 interface RegisteredExtension {
   label: string | undefined;
   tools: Map<string, ToolDefinition>;
 }
 
-/** SAFETY: the test host implements the three registration-time capabilities the extension uses. */
-function registerExtensionTools(): RegisteredExtension {
+/** The adapter only wraps the JSON Schema in `Type.Unsafe`; this hands it back as it came. */
+const typebox = { Type: { Unsafe: (schema: unknown) => schema } };
+
+/** Stands in for the host `Text`: it keeps the line, so a renderer test reads what was drawn. */
+class CapturedText {
+  constructor(
+    readonly text: string,
+    readonly paddingX?: number,
+    readonly paddingY?: number,
+  ) {}
+}
+
+/** A theme that writes its styling calls into the output. */
+const theme = {
+  fg: (color: string, text: string) => `${color}(${text})`,
+  styledSymbol: (symbol: string, color: string) => `${color}:${symbol}`,
+  spinnerFrames: ["frame-0", "frame-1"],
+  format: { bracketLeft: "[", bracketRight: "]" },
+  sep: { dot: " | " },
+} as unknown as Theme;
+
+/** SAFETY: the test host implements the registration-time capabilities the extension uses. */
+async function registerExtensionTools(): Promise<RegisteredExtension> {
   const tools = new Map<string, ToolDefinition>();
   let label: string | undefined;
   const api = {
-    typebox: TypeBox,
+    typebox,
+    pi: { Text: CapturedText },
     setLabel(value: string) {
       label = value;
     },
@@ -49,17 +65,32 @@ function registerExtensionTools(): RegisteredExtension {
     },
   };
 
-  booksOmpExtension(api as unknown as ExtensionAPI);
+  await booksOmpExtension(api as unknown as ExtensionAPI);
   return { label, tools };
-}
-
-/** SAFETY: the test host injects OMP's TypeBox facade, which creates this schema. */
-function accepts(tool: ToolDefinition, value: unknown): boolean {
-  return (tool.parameters as unknown as TypeBox.TSchema).safeParse(value).success;
 }
 
 /** SAFETY: the tested execute functions do not read ExtensionContext. */
 const unusedContext = {} as ExtensionContext;
+
+/**
+ * Runs a tool and reports whether the core refused its arguments. The schema check runs in
+ * `execute`, before the executor, so a refusal never reaches a catalog.
+ */
+async function outcome(tool: ToolDefinition, params: unknown): Promise<string> {
+  return Promise.resolve(
+    tool.execute("call-0", params as never, undefined, undefined, unusedContext),
+  ).then(
+    () => "ran",
+    (error: unknown) => (error instanceof ToolInputError ? "refused" : "failed"),
+  );
+}
+
+/** Text of a status line the host would draw for these arguments. */
+function statusLine(tool: ToolDefinition, args: Record<string, unknown>): string {
+  if (!tool.renderCall) throw new Error(`${tool.name} has no call renderer`);
+  const rendered = tool.renderCall(args, { expanded: false, isPartial: false }, theme);
+  return (rendered as unknown as { text: string }).text;
+}
 
 const ROUTES = {
   "/isbn/": { body: OPENLIBRARY_EDITION },
@@ -79,59 +110,69 @@ afterEach(() => {
 });
 
 describe("books OMP extension", () => {
-  it("registers the complete read-only tool set under an extension label", () => {
-    const { label, tools } = registerExtensionTools();
+  it("registers the complete read-only tool set under an extension label", async () => {
+    const { label, tools } = await registerExtensionTools();
 
     expect(label).toBe("Books");
     expect([...tools.keys()]).toEqual([
-      "books_get",
-      "books_search",
-      "books_text",
       "books_providers",
+      "books_search",
+      "books_get",
+      "books_text",
     ]);
     expect([...tools.values()].every((tool) => tool.approval === "read")).toBe(true);
   });
 
-  it("validates arguments with the host's own TypeBox build", () => {
-    const { tools } = registerExtensionTools();
+  /** A blank provider means no preference, and the byte ceiling is the library's own. */
+  it("hands OMP the shared schemas and refuses what they reject", async () => {
+    stubRoutes(ROUTES);
+    const { tools } = await registerExtensionTools();
+    const get = requireTool(tools, "books_get");
+    const text = requireTool(tools, "books_text");
+    const search = requireTool(tools, "books_search");
 
-    expect(accepts(requireTool(tools, "books_get"), { isbn: "9780441013593" })).toBe(true);
-    expect(accepts(requireTool(tools, "books_get"), { title: "Dune", provider: "" })).toBe(false);
-    // Same drift guard as the Pi extension: OMP rebuilds the schema with its host TypeBox, so
-    // the ceiling is a second copy of MAX_TEXT_BYTES that nothing else would catch diverging.
-    expect(
-      accepts(requireTool(tools, "books_text"), { title: "x", maxBytes: MAX_TEXT_BYTES }),
-    ).toBe(true);
-    expect(
-      accepts(requireTool(tools, "books_text"), { title: "x", maxBytes: MAX_TEXT_BYTES + 1 }),
-    ).toBe(false);
-    expect(accepts(requireTool(tools, "books_search"), { query: "dune", limit: 2 })).toBe(true);
-    expect(accepts(requireTool(tools, "books_search"), {})).toBe(false);
+    for (const definition of bookTools) {
+      expect(requireTool(tools, definition.name).parameters).toEqual(wireSchema(definition));
+    }
+    expect(await outcome(get, { isbn: "9780441013593" })).toBe("ran");
+    expect(await outcome(get, { title: "Dune", provider: "" })).not.toBe("refused");
+    expect(await outcome(get, { title: "Dune", saltHex: "00" })).toBe("refused");
+    expect(await outcome(text, { id: "84", maxBytes: MAX_TEXT_BYTES })).toBe("ran");
+    expect(await outcome(text, { id: "84", maxBytes: MAX_TEXT_BYTES + 1 })).toBe("refused");
+    expect(await outcome(search, {})).toBe("refused");
   });
 
-  it("strips escape sequences a model or a catalog could put in a status line", () => {
-    // renderCall interpolations reach the terminal unchanged; a title carrying an OSC sequence
-    // would otherwise be executed by it rather than shown.
-    const hostile = "Dune\u001b[31m\u0007\u0000  title";
-    expect(sanitizeTerminalText(hostile)).toBe("Dune title");
-    expect(sanitizeTerminalText({ toString: () => "x\u001b[0my" })).toBe("xy");
+  it("strips escape sequences a model or a catalog could put in a status line", async () => {
+    const tool = requireTool((await registerExtensionTools()).tools, "books_get");
+
+    expect(statusLine(tool, { title: "Dune\u001b]0;evil\u0007\u001b[31m\u0000  title" })).toBe(
+      "success:status.done accent(Books Get): muted(Dune title)",
+    );
   });
 
-  it("renders a status line naming the book being looked up", () => {
-    const tool = requireTool(registerExtensionTools().tools, "books_get");
+  it("cuts a long argument before sanitizing it", async () => {
+    const tool = requireTool((await registerExtensionTools()).tools, "books_search");
+    const started = performance.now();
+
+    statusLine(tool, { query: "\u001b]".repeat(100_000) });
+
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it("renders a status line naming the book being looked up", async () => {
+    const tool = requireTool((await registerExtensionTools()).tools, "books_get");
 
     const rendered = tool.renderCall?.(
       { isbn: "9780441013593" },
       { expanded: false, isPartial: false },
-      {} as never,
+      theme,
     ) as unknown as { text: string };
 
-    expect(rendered.text).toContain("Books Get");
-    expect(rendered.text).toContain("9780441013593");
+    expect(rendered.text).toBe("success:status.done accent(Books Get): muted(9780441013593)");
   });
 
-  it("previews a collapsed result bounded and hands it back whole once expanded", () => {
-    const { tools } = registerExtensionTools();
+  it("previews a collapsed result bounded and hands it back whole once expanded", async () => {
+    const { tools } = await registerExtensionTools();
     for (const tool of tools.values()) expect(tool.renderResult).toBeDefined();
 
     const blurb = `lead ${"x".repeat(3000)}`;
@@ -154,9 +195,9 @@ describe("books OMP extension", () => {
     expect(opened.text).toBe(blurb);
   });
 
-  it("keeps line breaks in a text slice while removing control bytes", async () => {
+  it("keeps line breaks in a text slice and draws it without control bytes", async () => {
     stubRoutes(ROUTES);
-    const tool = requireTool(registerExtensionTools().tools, "books_text");
+    const tool = requireTool((await registerExtensionTools()).tools, "books_text");
 
     const result = (await tool.execute?.(
       "call-1",
@@ -166,15 +207,22 @@ describe("books OMP extension", () => {
       unusedContext,
     )) as { content: { text?: string }[] };
 
-    const text = resultText(result);
-    expect(text).toContain("\n");
-    expect(text).toContain("Rozdział pierwszy.");
-    expect(text.replace(/\n/g, "")).not.toMatch(/\p{Cc}/u);
+    expect(resultText(result)).toContain("Rozdział pierwszy.");
+    const render = tool.renderResult;
+    if (!render) throw new Error("books_text has no result renderer");
+    const drawn = (
+      render(result as never, { expanded: true, isPartial: false }, theme) as unknown as {
+        text: string;
+      }
+    ).text;
+    expect(drawn).toContain("\n");
+    expect(drawn).toContain("Rozdział pierwszy.");
+    expect(drawn.replace(/\n/g, "")).not.toMatch(/\p{Cc}/u);
   });
 
   it("fetches a record through the library", async () => {
     stubRoutes(ROUTES);
-    const tool = requireTool(registerExtensionTools().tools, "books_get");
+    const tool = requireTool((await registerExtensionTools()).tools, "books_get");
 
     const result = (await tool.execute?.(
       "call-2",
