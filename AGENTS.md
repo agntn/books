@@ -180,6 +180,9 @@ answered; three candidates were dropped.
 
 - **Only public-domain texts.** `text()` reaches Gutenberg and Wolne Lektury; nothing else here
   has the right to serve a book. The Gutenberg licence header stays inside the text
+- `followText()` reads lending-only scans on purpose (#26, decided on #29): it serves search
+  passages, the same ones `searchText` returns, at most `MAX_FOLLOW_STEPS` of them a call. That
+  is quoting around a phrase, not serving the book, so `text` stays false for Open Library
 - The two HTML providers depend on site layout, and their terms of service restrict automated
   access - an operator decision documented in the README, not a right this library asserts
 - Test fixtures are invented. No real book text is committed to this repository
