@@ -109,6 +109,9 @@ fails its check digit before any request goes out. ISBN handling is exported too
 claude mcp add books --scope user -- node ~/Projekty/agntn/books/dist/cli.mjs mcp
 ```
 
+Run from a checkout, that command serves `src/`, so an edit needs a server restart, not a
+rebuild. `BOOKS_DIST=1` pins it to the bundle.
+
 **Vercel AI SDK** - `import { bookTool, searchTool, textTool, providersTool } from "@agntn/books/ai"`.
 
 **Pi and OMP** - the package ships an extension for each; `pi install <path>` and

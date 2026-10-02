@@ -134,6 +134,10 @@ answered; three candidates were dropped.
   every surface, the same facts as `details` (AI SDK output `{ ...details, text }`, so the text
   slice sits in `slice`). Loaded on the first call, so registering the tools loads no provider
 - `src/mcp.ts` - `createMcpServer()` on MCP SDK v2 through `@agntn/tools/mcp`
+- `src/cli.ts` - inside a checkout the built bin loads the `mcp` command from `src/` through a
+  runtime URL, so a local server takes a change on restart. A copy under `node_modules`, a Node
+  that doesn't strip types, a package without `src/` and `BOOKS_DIST=1` keep the bundle. A change
+  to `src/cli.ts` itself still needs `pnpm build`
 - `src/commands/mcp.ts` - imports the SDK inside `run()`: citty resolves every lazy subcommand to
   read its `meta`, so a top-level import would put the SDK in the startup path of `books --help`
 - `src/commands/args.ts` - `parseNumericArg`, and `toBookQuery` which reads the positional as an
@@ -182,7 +186,10 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 19 files / 181 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 20 files / 186 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+
+`test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
+because the publish job tests before it builds.
 
 Verified beyond the suite:
 
