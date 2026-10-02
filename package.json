@@ -59,7 +59,7 @@
     "@modelcontextprotocol/server": "2.2.0",
     "citty": "0.2.2",
     "consola": "3.4.2",
-    "node-html-parser": "9.0.1"
+    "node-html-parser": "9.0.4"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.84.2",
