@@ -107,6 +107,20 @@ describe("Books MCP server", () => {
     expect(resultText(response)).toContain("id=placeholderscan");
   });
 
+  it("refuses provider 'all' on the text search, which reads one provider", async () => {
+    const fetch = stubRoutes({});
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "books_text_search",
+      arguments: { query: "made-up phrase", provider: "all" },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(resultText(response)).toContain("leave provider empty");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("searches through the selected provider", async () => {
     stubRoutes(ROUTES);
     const client = await connectTestClient();

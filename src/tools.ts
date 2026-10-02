@@ -215,7 +215,13 @@ export const textSearchTool = defineTool({
           description: `Pages to read while looking for book, up to ${MAX_TEXT_SEARCH_PAGES}; defaults to 3. Each can take ten seconds`,
         }),
       ),
-      provider,
+      provider: Type.Optional(
+        Type.String({
+          maxLength: 64,
+          description:
+            "Registered provider key; use books_providers to list them. Empty or omitted: the first that searches inside scans",
+        }),
+      ),
     },
     { additionalProperties: false },
   ),
