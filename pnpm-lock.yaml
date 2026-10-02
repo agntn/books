@@ -23,9 +23,6 @@ importers:
       node-html-parser:
         specifier: 9.0.1
         version: 9.0.1
-      ofetch:
-        specifier: 1.5.1
-        version: 1.5.1
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 0.84.2

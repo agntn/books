@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildQuery, getJSON, readTextSlice } from "../../src/core/client.ts";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { buildQuery, getJSON, getText, readTextSlice } from "../../src/core/client.ts";
+import { NotFoundError } from "../../src/core/errors.ts";
 import { FAKE_TEXT, FAKE_TEXT_BYTES } from "../helpers.ts";
 import { stubRoutes } from "../helpers.ts";
 
@@ -67,6 +71,112 @@ describe("retry", () => {
       statusCode: 0,
     });
     expect(lifetimes[0]).toBeGreaterThanOrEqual(150);
+  });
+});
+
+describe("HTTP failures", () => {
+  it("repeats a server error once and returns the answer to the repeat", async () => {
+    const fetch = stubAttempts(async (attempt) =>
+      attempt === 1 ? new Response("busy", { status: 503 }) : json({ ok: true }),
+    );
+
+    await expect(getJSON(FILE_URL)).resolves.toEqual({ ok: true });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after the one retry and keeps the status and body", async () => {
+    const fetch = stubAttempts(async () => new Response("down for maintenance", { status: 503 }));
+
+    await expect(getJSON(FILE_URL, { provider: "gutendex" })).rejects.toMatchObject({
+      name: "HTTPError",
+      statusCode: 503,
+      body: "down for maintenance",
+      provider: "gutendex",
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not repeat a request the catalog has answered with 404", async () => {
+    const fetch = stubAttempts(async () => new Response("", { status: 404 }));
+
+    await expect(getText(FILE_URL)).rejects.toBeInstanceOf(NotFoundError);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads retry-after off a rate limit", async () => {
+    stubAttempts(
+      async () => new Response("slow down", { status: 429, headers: { "Retry-After": "30" } }),
+    );
+
+    await expect(getJSON(FILE_URL, { provider: "openlibrary" })).rejects.toMatchObject({
+      name: "RateLimitError",
+      retryAfter: 30,
+    });
+  });
+});
+
+describe("response bodies", () => {
+  it("answers a response without a body with nothing", async () => {
+    stubAttempts(async () => new Response(null, { status: 204 }));
+    await expect(getJSON(FILE_URL)).resolves.toBeUndefined();
+  });
+
+  it("reads an empty body as an empty string", async () => {
+    stubAttempts(async () => new Response("", { status: 200 }));
+    await expect(getJSON(FILE_URL)).resolves.toBe("");
+    await expect(getText(FILE_URL)).resolves.toBe("");
+  });
+
+  it("keeps an HTML page a string even when it claims to be JSON", async () => {
+    stubAttempts(async () => json({ error: "maintenance" }));
+    await expect(getText(FILE_URL)).resolves.toBe('{"error":"maintenance"}');
+  });
+
+  it("drops keys that would reach a prototype", async () => {
+    stubAttempts(
+      async () =>
+        new Response('{"title":"Lalka","__proto__":{"polluted":true}}', {
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const record = await getJSON<Record<string, unknown>>(FILE_URL);
+    expect(record).toEqual({ title: "Lalka" });
+    expect(Object.getPrototypeOf(record)).toBe(Object.prototype);
+  });
+});
+
+describe("against a real server", () => {
+  let server: Server;
+  let base: string;
+  const agents: (string | undefined)[] = [];
+
+  beforeAll(async () => {
+    server = createServer((request, response) => {
+      agents.push(request.headers["user-agent"]);
+      if (request.url === "/isbn/9780441013593.json") {
+        response.writeHead(302, { Location: "/books/OL7524304M.json" }).end();
+      } else if (request.url === "/books/OL7524304M.json") {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ key: "/books/OL7524304M" }));
+      } else {
+        response.writeHead(404).end();
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  it("follows the ISBN redirect to the edition and identifies itself", async () => {
+    await expect(getJSON(`${base}/isbn/9780441013593.json`)).resolves.toEqual({
+      key: "/books/OL7524304M",
+    });
+    expect(agents).toHaveLength(2);
+    for (const agent of agents) expect(agent).toMatch(/^agntn-books\/\S+ \(\+https:/);
   });
 });
 

@@ -1,8 +1,6 @@
 /** HTTP client wrapper for Books providers */
 
-import { ofetch } from "ofetch";
-import type { FetchContext } from "ofetch";
-import { normalizeError } from "./errors.ts";
+import { ResponseError, normalizeError } from "./errors.ts";
 import { trimPartialUtf8 } from "./text.ts";
 import { version } from "../version.ts";
 
@@ -35,21 +33,91 @@ const DEFAULT_TIMEOUT_MS = 15_000;
  */
 const RETRIES = 1;
 
-/**
- * A signal per attempt: ofetch arms its timeout once and hands the retry the same signal, so the
- * repeat after a timeout dies unsent, and the one after a dropped connection inherits its clock.
- */
-function armTimeout({ options }: FetchContext): void {
-  if (options.timeout) options.signal = AbortSignal.timeout(options.timeout);
+/** Statuses worth the retry. A request that got no response is retried too. */
+const RETRY_STATUS_CODES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+
+/** Statuses whose response never carries a body. */
+const EMPTY_STATUS_CODES = new Set([101, 204, 205, 304]);
+
+/** How a response body is read: parsed as JSON where it parses, as text, or as raw bytes. */
+type BodyFormat = "json" | "text" | "bytes";
+
+interface Reply {
+  status: number;
+  headers: Headers;
+  data: unknown;
 }
 
-/** Retry and timeout policy shared by every request. */
-function attempts(options?: ClientOptions) {
-  return {
-    timeout: options?.timeout ?? DEFAULT_TIMEOUT_MS,
-    retry: RETRIES,
-    onRequest: armTimeout,
-  };
+type Attempt = { reply: Reply } | { error: unknown; retry: boolean };
+
+/** GET with the shared headers and the one retry; failures leave here normalized. */
+async function get(
+  url: string,
+  request: { accept: string; range?: string; format: BodyFormat },
+  options?: ClientOptions,
+): Promise<Reply> {
+  const headers: Record<string, string> = { Accept: request.accept, "User-Agent": USER_AGENT };
+  if (request.range) headers.Range = request.range;
+  const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
+  try {
+    for (let retries = RETRIES; ; retries -= 1) {
+      const outcome = await attempt(url, headers, request.format, timeout);
+      if ("reply" in outcome) return outcome.reply;
+      if (retries <= 0 || !outcome.retry) throw outcome.error;
+    }
+  } catch (error) {
+    throw normalizeError(error, options?.provider, url);
+  }
+}
+
+/** One request under its own deadline, so the repeat after a timeout gets a full one. */
+async function attempt(
+  url: string,
+  headers: Record<string, string>,
+  format: BodyFormat,
+  timeout: number,
+): Promise<Attempt> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers,
+      signal: timeout > 0 ? AbortSignal.timeout(timeout) : undefined,
+    });
+  } catch (error) {
+    return { error, retry: true };
+  }
+  if (response.status >= 400 && response.status < 600) {
+    const body = await response.text();
+    return {
+      error: new ResponseError(response.status, url, body, response.headers),
+      retry: RETRY_STATUS_CODES.has(response.status),
+    };
+  }
+  const data = await readBody(response, format);
+  return { reply: { status: response.status, headers: response.headers, data } };
+}
+
+/** Read a response body in the requested format; a bodiless status reads as nothing. */
+async function readBody(response: Response, format: BodyFormat): Promise<unknown> {
+  if (!response.body || EMPTY_STATUS_CODES.has(response.status)) return undefined;
+  if (format === "bytes") return response.arrayBuffer();
+  const text = await response.text();
+  return format === "json" ? parseJSON(text) : text;
+}
+
+/** JSON when the text parses, the text itself otherwise, without keys that reach a prototype. */
+function parseJSON(text: string): unknown {
+  try {
+    return JSON.parse(text, (key, value: unknown) =>
+      key === "__proto__" ||
+      (key === "constructor" && typeof value === "object" && value !== null && "prototype" in value)
+        ? undefined
+        : value,
+    );
+  } catch {
+    return text;
+  }
 }
 
 /**
@@ -58,40 +126,18 @@ function attempts(options?: ClientOptions) {
  * Transport failures are normalized before they leave this boundary.
  */
 export async function getJSON<T>(url: string, options?: ClientOptions): Promise<T> {
-  try {
-    return await ofetch<T>(url, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "User-Agent": USER_AGENT,
-      },
-      ...attempts(options),
-    });
-  } catch (error) {
-    throw normalizeError(error, options?.provider, url);
-  }
+  const reply = await get(url, { accept: "application/json", format: "json" }, options);
+  return reply.data as T;
 }
 
-/**
- * Fetch an HTML page as text, for the providers that read their records out of markup.
- *
- * `responseType: "text"` is explicit: without it ofetch decides from the response content type,
- * and a site answering `application/json` for an error page would hand back an object.
- */
+/** Fetch an HTML page as text, even when the server labels it JSON. */
 export async function getText(url: string, options?: ClientOptions): Promise<string> {
-  try {
-    return await ofetch<string, "text">(url, {
-      method: "GET",
-      responseType: "text",
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": USER_AGENT,
-      },
-      ...attempts(options),
-    });
-  } catch (error) {
-    throw normalizeError(error, options?.provider, url);
-  }
+  const reply = await get(
+    url,
+    { accept: "text/html,application/xhtml+xml", format: "text" },
+    options,
+  );
+  return typeof reply.data === "string" ? reply.data : "";
 }
 
 /** One slice of a text file, with the byte bookkeeping needed to ask for the next one. */
@@ -133,46 +179,37 @@ export async function readTextSlice(
   options?: ClientOptions,
 ): Promise<TextSlice> {
   const { offset, maxBytes } = range;
-  try {
-    const response = await ofetch.raw<ArrayBuffer, "arrayBuffer">(url, {
-      method: "GET",
-      responseType: "arrayBuffer",
-      headers: {
-        Accept: "text/plain",
-        Range: `bytes=${offset}-${offset + maxBytes - 1}`,
-        "User-Agent": USER_AGENT,
-      },
-      ...attempts(options),
-    });
+  const response = await get(
+    url,
+    { accept: "text/plain", range: `bytes=${offset}-${offset + maxBytes - 1}`, format: "bytes" },
+    options,
+  );
 
-    const body = new Uint8Array(response._data ?? new ArrayBuffer(0));
-    const served = response.status === 206;
-    const totalBytes = served
-      ? parseTotalBytes(response.headers.get("content-range"))
-      : body.byteLength;
-    const chunk = served ? body : body.subarray(offset, offset + maxBytes);
+  const body = new Uint8Array((response.data as ArrayBuffer | undefined) ?? new ArrayBuffer(0));
+  const served = response.status === 206;
+  const totalBytes = served
+    ? parseTotalBytes(response.headers.get("content-range"))
+    : body.byteLength;
+  const chunk = served ? body : body.subarray(offset, offset + maxBytes);
 
-    const trimmed = trimPartialUtf8(chunk, {
-      start: offset > 0,
-      end: chunk.byteLength >= maxBytes,
-    });
-    const start = offset + trimmed.leading;
-    const bytes = trimmed.bytes.byteLength;
-    const nextOffset = start + bytes;
-    const truncated =
-      totalBytes === undefined ? chunk.byteLength >= maxBytes : nextOffset < totalBytes;
+  const trimmed = trimPartialUtf8(chunk, {
+    start: offset > 0,
+    end: chunk.byteLength >= maxBytes,
+  });
+  const start = offset + trimmed.leading;
+  const bytes = trimmed.bytes.byteLength;
+  const nextOffset = start + bytes;
+  const truncated =
+    totalBytes === undefined ? chunk.byteLength >= maxBytes : nextOffset < totalBytes;
 
-    return {
-      text: new TextDecoder("utf-8").decode(trimmed.bytes),
-      offset: start,
-      bytes,
-      totalBytes,
-      truncated,
-      nextOffset: truncated ? nextOffset : undefined,
-    };
-  } catch (error) {
-    throw normalizeError(error, options?.provider, url);
-  }
+  return {
+    text: new TextDecoder("utf-8").decode(trimmed.bytes),
+    offset: start,
+    bytes,
+    totalBytes,
+    truncated,
+    nextOffset: truncated ? nextOffset : undefined,
+  };
 }
 
 /**
