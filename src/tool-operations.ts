@@ -26,10 +26,9 @@ import {
   formatText,
   formatTextSearch,
 } from "./core/format.ts";
-import { InvalidInputError } from "./core/errors.ts";
 import { requireOperation } from "./core/provider.ts";
 import { listProviders, type ProviderListing } from "./core/registry.ts";
-import { isAllProviders, providerArg, selectProvider } from "./core/resolve.ts";
+import { isAllProviders, providerArg, selectOneProvider, selectProvider } from "./core/resolve.ts";
 import type { Book, BookMatch, BookText, TextSearchResult } from "./core/types.ts";
 import "./providers/index.ts";
 
@@ -192,10 +191,7 @@ export async function booksTextSearch(
     limit: params.limit,
     maxPages: params.maxPages,
   };
-  if (isAllProviders(params.provider)) {
-    throw new InvalidInputError("books_text_search reads one provider; leave provider empty");
-  }
-  const { name, provider } = selectProvider(providerArg(params.provider), "searchText");
+  const { name, provider } = selectOneProvider(providerArg(params.provider), "searchText");
   const search = await requireOperation(provider, "searchText")(params.query.trim(), options);
   return answer(formatTextSearch(search, options), { provider: name, search });
 }

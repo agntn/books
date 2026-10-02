@@ -151,3 +151,15 @@ describe("books with a closed pipe", () => {
     await expect(closedPipe("stdout", "providers")).resolves.toEqual({ code: 0, output: "" });
   });
 });
+
+describe("books search-text", () => {
+  it("refuses provider all before any request, like the tool", () => {
+    const run = spawnSync(
+      process.execPath,
+      [join(root, "src/cli.ts"), "search-text", "made-up phrase", "-p", "all"],
+      { encoding: "utf8", env, timeout: 10_000 },
+    );
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("searchText reads one provider; leave provider empty");
+  });
+});

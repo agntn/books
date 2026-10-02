@@ -88,6 +88,7 @@ export {
   isConfigured,
   providerArg,
   resolveProvider,
+  selectOneProvider,
   selectProvider,
   usableProviders,
 } from "./core/resolve.ts";

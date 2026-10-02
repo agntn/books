@@ -3,7 +3,7 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { formatTextSearch } from "../core/format.ts";
 import { requireOperation } from "../core/provider.ts";
-import { selectProvider } from "../core/resolve.ts";
+import { selectOneProvider } from "../core/resolve.ts";
 import { parseNumericArg, runCommand } from "./args.ts";
 
 export default defineCommand({
@@ -48,7 +48,7 @@ export default defineCommand({
         limit: parseNumericArg(args.limit, "limit", { integer: true, min: 1 }),
         maxPages: parseNumericArg(args.pages, "pages", { integer: true, min: 1 }),
       };
-      const { provider } = selectProvider(args.provider, "searchText");
+      const { provider } = selectOneProvider(args.provider, "searchText");
       const search = requireOperation(provider, "searchText");
       consola.log(formatTextSearch(await search(args.query, options), options));
     });

@@ -1,7 +1,7 @@
 /** Auto-select a provider from the environment and the operation being requested */
 
 import { create, has, isConfigured, providers, supportsOperation } from "./registry.ts";
-import { UnknownProviderError } from "./errors.ts";
+import { InvalidInputError, UnknownProviderError } from "./errors.ts";
 import type { Provider, ProviderOperation } from "./provider.ts";
 import type { ProviderCapabilities } from "./types.ts";
 
@@ -91,4 +91,15 @@ export function selectProvider(
 ): SelectedProvider {
   const name = resolveProvider(providerArg(preferred), operation);
   return { name, provider: create(name) };
+}
+
+/** `selectProvider` for an operation without a fan-out, refusing the reserved "all" by name. */
+export function selectOneProvider(
+  preferred: string | undefined,
+  operation: ProviderOperation,
+): SelectedProvider {
+  if (isAllProviders(preferred)) {
+    throw new InvalidInputError(`${operation} reads one provider; leave provider empty`);
+  }
+  return selectProvider(preferred, operation);
 }
