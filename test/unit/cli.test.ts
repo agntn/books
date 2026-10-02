@@ -163,3 +163,15 @@ describe("books search-text", () => {
     expect(run.stderr).toContain("searchText reads one provider; leave provider empty");
   });
 });
+
+describe("books text", () => {
+  it("refuses provider all before any request, like the tool", () => {
+    const run = spawnSync(
+      process.execPath,
+      [join(root, "src/cli.ts"), "text", "Placeholder Novel", "-p", "all"],
+      { encoding: "utf8", env, timeout: 10_000 },
+    );
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("text reads one provider; leave provider empty");
+  });
+});

@@ -121,6 +121,20 @@ describe("Books MCP server", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("refuses provider 'all' on the text, which reads one provider", async () => {
+    const fetch = stubRoutes({});
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "books_text",
+      arguments: { title: "Placeholder Novel", provider: "all" },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(resultText(response)).toContain("text reads one provider; leave provider empty");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("searches through the selected provider", async () => {
     stubRoutes(ROUTES);
     const client = await connectTestClient();
