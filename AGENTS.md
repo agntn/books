@@ -137,7 +137,8 @@ answered; three candidates were dropped.
 - `src/cli.ts` - inside a checkout the built bin loads the `mcp` command from `src/` through a
   runtime URL, so a local server takes a change on restart. A copy under `node_modules`, a Node
   that doesn't strip types, a package without `src/` and `BOOKS_DIST=1` keep the bundle. A change
-  to `src/cli.ts` itself still needs `pnpm build`
+  to `src/cli.ts` itself still needs `pnpm build`. The source server fills its own registry, so a
+  provider a host preloads into the bin (`node --import`) shows up only under `BOOKS_DIST=1`
 - `src/commands/mcp.ts` - imports the SDK inside `run()`: citty resolves every lazy subcommand to
   read its `meta`, so a top-level import would put the SDK in the startup path of `books --help`
 - `src/commands/args.ts` - `parseNumericArg`, and `toBookQuery` which reads the positional as an
