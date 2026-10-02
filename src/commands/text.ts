@@ -4,7 +4,7 @@ import consola from "consola";
 import { textWithFallback } from "../core/all.ts";
 import { formatFallback, formatText } from "../core/format.ts";
 import { requireOperation } from "../core/provider.ts";
-import { providerArg, selectProvider } from "../core/resolve.ts";
+import { providerArg, selectOneProvider } from "../core/resolve.ts";
 import { parseNumericArg, runCommand, toBookQuery } from "./args.ts";
 
 export default defineCommand({
@@ -56,7 +56,7 @@ export default defineCommand({
         return;
       }
 
-      const { provider } = selectProvider(args.provider, "text");
+      const { provider } = selectOneProvider(args.provider, "text");
       consola.log(formatText(await requireOperation(provider, "text")(query, options)));
     });
   },

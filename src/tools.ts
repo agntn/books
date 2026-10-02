@@ -160,7 +160,13 @@ export const textTool = defineTool({
           description: `Max bytes to read in one call, up to ${MAX_TEXT_BYTES}; defaults to 32768`,
         }),
       ),
-      provider,
+      provider: Type.Optional(
+        Type.String({
+          maxLength: 64,
+          description:
+            "Registered provider key; use books_providers to list them. Empty or omitted: the libraries that carry texts are tried in order",
+        }),
+      ),
     },
     { additionalProperties: false },
   ),

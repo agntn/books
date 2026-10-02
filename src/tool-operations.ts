@@ -171,7 +171,7 @@ export async function booksText(params: TextParams): Promise<ToolResult<TextDeta
       skipped: fallback.skipped,
     });
   }
-  const { name, provider } = selectProvider(named, "text");
+  const { name, provider } = selectOneProvider(named, "text");
   const slice = await requireOperation(provider, "text")(query, options);
   return answer(formatText(slice), { provider: name, slice });
 }
