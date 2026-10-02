@@ -44,6 +44,18 @@ async function loadMcpCommand(): Promise<typeof McpCommand> {
   return module.default;
 }
 
+/**
+ * Exits quietly once the reader of stdout or stderr is gone (`| head -1`), keeping the exit code.
+ * @param error - The error the stream emitted.
+ */
+function exitOnClosedPipe(error: Readonly<NodeJS.ErrnoException>): void {
+  if (error.code !== "EPIPE") throw error;
+  process.exit();
+}
+
+process.stdout.on("error", exitOnClosedPipe);
+process.stderr.on("error", exitOnClosedPipe);
+
 const main = defineCommand({
   meta: {
     name: "books",

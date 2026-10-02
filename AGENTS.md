@@ -187,7 +187,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 20 files / 196 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 20 files / 197 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
 because the publish job tests before it builds.
