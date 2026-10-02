@@ -96,6 +96,12 @@ describe("HTTP failures", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps an empty error body empty", async () => {
+    stubAttempts(async () => new Response("", { status: 503 }));
+
+    await expect(getJSON(FILE_URL)).rejects.toMatchObject({ name: "HTTPError", body: "" });
+  });
+
   it("does not repeat a request the catalog has answered with 404", async () => {
     const fetch = stubAttempts(async () => new Response("", { status: 404 }));
 

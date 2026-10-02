@@ -211,7 +211,7 @@ export function normalizeError(error: unknown, provider?: string, requestUrl?: s
     lowerMessage.includes("etimedout") ||
     lowerMessage.includes("timeouterror")
   ) {
-    return new HTTPError(status, url ?? "unknown", response?.body || message, provider);
+    return new HTTPError(status, url ?? "unknown", response?.body ?? message, provider);
   }
 
   return new BooksError(message, provider);
