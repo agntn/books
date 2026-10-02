@@ -24,7 +24,7 @@ import { MAX_TEXT_BYTES } from "../../src/core/types.ts";
 import booksExtension from "../../packages/pi/extensions/books.ts";
 
 /** SAFETY: the extension only calls registerTool during registration; the fake implements that seam. */
-function registerExtensionTools(): Map<string, ToolDefinition> {
+async function registerExtensionTools(): Promise<Map<string, ToolDefinition>> {
   const tools = new Map<string, ToolDefinition>();
   const api = {
     registerTool(tool: ToolDefinition) {
@@ -32,7 +32,7 @@ function registerExtensionTools(): Map<string, ToolDefinition> {
     },
   };
 
-  booksExtension(api as unknown as ExtensionAPI);
+  await booksExtension(api as unknown as ExtensionAPI);
   return tools;
 }
 
@@ -58,17 +58,17 @@ afterEach(() => {
 });
 
 describe("books Pi extension", () => {
-  it("registers the complete tool set", () => {
-    expect([...registerExtensionTools().keys()]).toEqual([
-      "books_get",
-      "books_search",
-      "books_text",
+  it("registers the complete tool set", async () => {
+    expect([...(await registerExtensionTools()).keys()]).toEqual([
       "books_providers",
+      "books_search",
+      "books_get",
+      "books_text",
     ]);
   });
 
-  it("names each tool in every prompt guideline", () => {
-    for (const tool of registerExtensionTools().values()) {
+  it("names each tool in every prompt guideline", async () => {
+    for (const tool of (await registerExtensionTools()).values()) {
       expect(tool.promptGuidelines).not.toHaveLength(0);
       for (const guideline of tool.promptGuidelines ?? []) {
         expect(guideline).toContain(tool.name);
@@ -76,24 +76,34 @@ describe("books Pi extension", () => {
     }
   });
 
-  it("tells the model that only public-domain books have texts", () => {
-    const tool = requireTool(registerExtensionTools(), "books_text");
+  it("tells the model that only public-domain books have texts", async () => {
+    const tool = requireTool(await registerExtensionTools(), "books_text");
     expect(tool.promptGuidelines?.join(" ")).toMatch(/public-domain|copyright/i);
   });
 
-  it("accepts a lookup by any one identifier and rejects an empty provider", () => {
-    const tool = requireTool(registerExtensionTools(), "books_get");
+  it("accepts a lookup by any one identifier and reads an empty provider as none", async () => {
+    const tool = requireTool(await registerExtensionTools(), "books_get");
     const schema = tool.parameters as Parameters<typeof Value.Check>[0];
 
     expect(Value.Check(schema, { isbn: "9780441013593" })).toBe(true);
     expect(Value.Check(schema, { title: "Dune" })).toBe(true);
     expect(Value.Check(schema, {})).toBe(true);
-    expect(Value.Check(schema, { title: "Dune", provider: "" })).toBe(false);
-    expect(Value.Check(schema, { isbn: "978" })).toBe(false);
+    expect(Value.Check(schema, { title: "Dune", provider: "" })).toBe(true);
+    expect(Value.Check(schema, { title: "Dune", saltHex: "00" })).toBe(false);
   });
 
-  it("bounds a text slice at the shared ceiling", () => {
-    const tool = requireTool(registerExtensionTools(), "books_text");
+  it("rejects a malformed ISBN before any request", async () => {
+    const fetch = stubRoutes(ROUTES);
+    const tool = requireTool(await registerExtensionTools(), "books_get");
+
+    await expect(
+      tool.execute("call-0", { isbn: "978" }, undefined, undefined, unusedContext),
+    ).rejects.toThrow(/ISBN|isbn/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("bounds a text slice at the shared ceiling", async () => {
+    const tool = requireTool(await registerExtensionTools(), "books_text");
     const schema = tool.parameters as Parameters<typeof Value.Check>[0];
 
     // Bound taken from the library, not restated: the schema literal and MAX_TEXT_BYTES are two
@@ -107,7 +117,7 @@ describe("books Pi extension", () => {
 
   it("fetches a record through the library and renders it with its source", async () => {
     stubRoutes(ROUTES);
-    const tool = requireTool(registerExtensionTools(), "books_get");
+    const tool = requireTool(await registerExtensionTools(), "books_get");
 
     const result = await tool.execute?.(
       "call-1",
@@ -124,7 +134,7 @@ describe("books Pi extension", () => {
 
   it("reads a text slice and shows how to read on", async () => {
     stubRoutes(ROUTES);
-    const tool = requireTool(registerExtensionTools(), "books_text");
+    const tool = requireTool(await registerExtensionTools(), "books_text");
 
     const result = await tool.execute?.(
       "call-2",
@@ -139,8 +149,8 @@ describe("books Pi extension", () => {
     expect(text).toContain("read on from 9");
   });
 
-  it("previews a collapsed result bounded and hands it back whole once expanded", () => {
-    const tools = registerExtensionTools();
+  it("previews a collapsed result bounded and hands it back whole once expanded", async () => {
+    const tools = await registerExtensionTools();
     for (const tool of tools.values()) expect(tool.renderResult).toBeDefined();
 
     const blurb = `lead ${"x".repeat(3000)}`;
@@ -171,7 +181,7 @@ describe("books Pi extension", () => {
 
   it("lists providers without contacting one", async () => {
     const fetch = stubRoutes(ROUTES);
-    const tool = requireTool(registerExtensionTools(), "books_providers");
+    const tool = requireTool(await registerExtensionTools(), "books_providers");
 
     const result = await tool.execute?.("call-3", {}, undefined, undefined, unusedContext);
 

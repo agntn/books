@@ -1,11 +1,11 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Provider } from "../../src/core/provider.ts";
 import type { ProviderConstructor } from "../../src/core/provider.ts";
 import { create, getDefaultURL, register } from "../../src/core/registry.ts";
 import type { Book, ProviderCapabilities } from "../../src/core/types.ts";
 import { createMcpServer } from "../../src/mcp.ts";
+import "../../src/providers/index.ts";
 import { OPENLIBRARY_EDITION, OPENLIBRARY_WORK, stubRoutes } from "../helpers.ts";
 
 const openLibraryConstructor = create("openlibrary").constructor as ProviderConstructor;
@@ -87,10 +87,10 @@ describe("Books MCP server", () => {
       arguments: { query: "placeholder", provider: "openlibrary", limit: 1 },
     });
 
-    expect(JSON.parse(resultText(response))).toMatchObject({
-      provider: "openlibrary",
-      data: [{ title: "Placeholder Novel" }],
-    });
+    const text = resultText(response);
+    expect(text).toContain('[openlibrary] 1 matches for "placeholder"');
+    expect(text).toContain("Placeholder Novel - Someone");
+    expect(text).toContain("id=OL893414W");
   });
 
   it("walks catalogs for a record and reports who was passed over", async () => {
@@ -102,10 +102,11 @@ describe("Books MCP server", () => {
       arguments: { isbn: "9780441013593" },
     });
 
-    const payload = JSON.parse(resultText(response));
-    expect(payload.provider).toBe("openlibrary");
-    expect(payload.data).toMatchObject({ title: "Placeholder Novel", isbn13: "9780441013593" });
-    expect(payload.skipped).toEqual([]);
+    const text = resultText(response);
+    expect(text).toMatch(/^\[openlibrary\] Placeholder Novel/);
+    expect(text).toContain("ISBN-13: 9780441013593");
+    expect(text).toContain("Source: https://openlibrary.org/");
+    expect(text).not.toContain("skipped");
   });
 
   it("rejects arguments before they reach a provider", async () => {

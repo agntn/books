@@ -108,8 +108,8 @@ answered; three candidates were dropped.
   `erasableSyntaxOnly` forbids parameter properties
 - Provider registration is a class side effect: importing `src/providers/index.ts` triggers all
   `register()` calls - because of that, `package.json` must NOT declare `sideEffects: false`
-- One obuild bundle with four inputs (`index`, `cli`, `mcp`, `ai`) so every entry shares the chunk
-  holding the registry
+- One obuild bundle with five inputs (`index`, `cli`, `mcp`, `ai`, `tools`) so every entry shares
+  the chunk holding the registry
 
 ## Key files
 
@@ -126,15 +126,24 @@ answered; three candidates were dropped.
 - `src/core/resolve.ts` - capability-aware selection
 - `src/core/all.ts` - `searchAll`, `bookAll`, `bookWithFallback`, `textWithFallback`
 - `src/core/format.ts` - plain-text formatters shared by every output surface
-- `src/core/schemas.ts` - zod fragments shared by the MCP server and the AI tools
 - `src/providers/*.ts` - one file per provider; order in `index.ts` is the fallback order
-- `src/mcp.ts` - `createMcpServer()`, four read-only tools
+- `src/tools.ts` - the four tool definitions every agent surface serves through `@agntn/tools`:
+  one TypeBox schema each, built with `Type` from `@agntn/tools` (OMP rewrites a bare `typebox`
+  import). Optional text arguments take `""` as absent; the executors trim and drop blanks
+- `src/tool-operations.ts` - executors behind them: the `core/format.ts` text for the model on
+  every surface, the same facts as `details` (AI SDK output `{ ...details, text }`, so the text
+  slice sits in `slice`). Loaded on the first call, so registering the tools loads no provider
+- `src/mcp.ts` - `createMcpServer()` on MCP SDK v2 through `@agntn/tools/mcp`
 - `src/commands/mcp.ts` - imports the SDK inside `run()`: citty resolves every lazy subcommand to
   read its `meta`, so a top-level import would put the SDK in the startup path of `books --help`
 - `src/commands/args.ts` - `parseNumericArg`, and `toBookQuery` which reads the positional as an
   ISBN when it parses as one
-- `packages/pi/extensions/books.ts`, `packages/omp/extensions/books.ts` - agent extensions;
-  type-import from `dist/index.d.mts`. The OMP loader keeps both dynamic imports literal
+- `packages/pi/extensions/books.ts`, `packages/omp/extensions/books.ts` - agent extensions over
+  `registerPiTools` / `registerOmpTools`; type-import from `dist/tools.d.mts`. The OMP loader keeps
+  both dynamic imports literal and takes `Text` from `pi.pi`: an import from
+  `@oh-my-pi/pi-coding-agent/tui` stopped the extension loading in compiled OMP, and the test
+  mock of that module throws. The status line cuts an argument to 100 characters before
+  `sanitizeLine`, which is quadratic on an unclosed `ESC]`
 - `packages/shared/tui.ts` - collapsed result previews for both extensions: ten lines cut to a
   200-character width, the complete text once the row is expanded
 
@@ -173,7 +182,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 19 files / 173 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 19 files / 181 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 Verified beyond the suite:
 

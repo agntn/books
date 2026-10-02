@@ -62,9 +62,10 @@ describe("formatBookLine", () => {
       year: 1965,
       id: "OL893414W",
       isbn: "9780441013593",
+      url: "https://openlibrary.org/works/OL893414W",
     });
     expect(line).toBe(
-      "Placeholder Novel - Placeholder Herbert  (1965, ISBN 9780441013593, id=OL893414W)",
+      "Placeholder Novel - Placeholder Herbert  (1965, ISBN 9780441013593, id=OL893414W, https://openlibrary.org/works/OL893414W)",
     );
   });
 
@@ -89,6 +90,11 @@ describe("formatBook", () => {
     expect(rendered).toContain("Rating: 4.3/5 from 443 ratings");
     expect(rendered.trimEnd().endsWith("Catalog data from Open Library")).toBe(true);
     expect(rendered).toContain("Source: https://openlibrary.org/books/OL7524304M");
+  });
+
+  it("keeps the cover URL that an MCP client would otherwise never see", () => {
+    const rendered = formatBook({ ...BOOK, cover: "https://covers.example/1-L.jpg" });
+    expect(rendered).toContain("Cover: https://covers.example/1-L.jpg");
   });
 
   it("omits fields the catalog did not fill in", () => {
@@ -144,6 +150,6 @@ describe("formatProviders", () => {
     const rendered = formatProviders(listProviders());
     expect(rendered).toContain("Registered providers (5)");
     expect(rendered).toContain("gutendex: search, book, text");
-    expect(rendered).toContain("openlibrary: search, book, isbn, ratings");
+    expect(rendered).toContain("openlibrary: search, book, isbn, ratings https://");
   });
 });
