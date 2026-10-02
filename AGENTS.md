@@ -27,7 +27,7 @@ answered; three candidates were dropped.
 
 - **Open Library** (`openlibrary.org`): `/search.json` verified with `fields=` (without it every
   match carries its whole search index - one doc listed several hundred ISBNs). `/isbn/{isbn}.json`
-  answers 302 to `/books/{OL…M}.json`; ofetch follows it. `/works/{id}/ratings.json` returns
+  answers 302 to `/books/{OL…M}.json`; `fetch` follows it. `/works/{id}/ratings.json` returns
   `{ summary: { average, count } }`, and a work nobody rated answers with nulls. Authors arrive as
   keys, one request each. **A record exists under ISBN `9999999999999`** - catalogs store what
   cataloguers typed, and that number fails its check digit, so `assertIsbn` refuses it before the
@@ -94,9 +94,9 @@ answered; three candidates were dropped.
 - `clampTextBytes()` bounds one slice at `MAX_TEXT_BYTES`; the ceiling protects the caller's
   context window and has nothing to do with which library serves the file
 - The HTTP client retries **once**, and only because every request here is a GET. Gutendex made
-  the case for it during the audit. Each attempt gets its own `AbortSignal.timeout` from an
-  `onRequest` hook: ofetch 1.5.1 arms its timer once and hands the retry the first attempt's
-  signal, so without the hook a retry after a timeout never leaves the process
+  the case for it during the audit. The client is native `fetch`, and each attempt gets its own
+  `AbortSignal.timeout`: a shared one would kill the retry after a timeout before it is sent.
+  A request with no response is retried, a response only with 408, 409, 425, 429 or 5xx
 - `jsonLd()` parses a block, and when that fails, retries with everything from `"review"` onwards
   cut off. It is not defensive coding - it is the only way the Lubimyczytać node parses at all
 - Provider construction never checks credentials, which keeps `create()` total so `listProviders()`
@@ -117,7 +117,7 @@ answered; three candidates were dropped.
   `clampMaxResults`, `clampTextBytes`
 - `src/core/isbn.ts` - normalization, both check digits, 10↔13 conversion, `assertIsbn`
 - `src/core/text.ts` - `normalizeText`, `parseYear`, `uniqueStrings`, `trimPartialUtf8`
-- `src/core/client.ts` - ofetch wrapper: `getJSON`, `getText`, `readTextSlice` (ranges), 15 s
+- `src/core/client.ts` - native `fetch`: `getJSON`, `getText`, `readTextSlice` (ranges), 15 s
   timeout, one retry, identifying User-Agent
 - `src/core/html.ts` - `parseHtml`, JSON-LD reading with the review salvage, OpenGraph helpers
 - `src/core/provider.ts` - abstract `Provider`, `assertBookQuery`, `requireOperation` gate
@@ -187,7 +187,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 20 files / 186 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 20 files / 196 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
 because the publish job tests before it builds.

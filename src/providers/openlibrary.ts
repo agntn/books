@@ -264,7 +264,7 @@ class OpenLibrary extends Provider {
   /**
    * Find the edition or work a query names, in one request where the catalog allows one.
    *
-   * `/isbn/{isbn}` answers a redirect to the edition record, which ofetch follows.
+   * `/isbn/{isbn}` answers a redirect to the edition record, which `fetch` follows.
    */
   private async locate(
     query: BookQuery,

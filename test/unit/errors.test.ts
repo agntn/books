@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FetchError } from "ofetch";
 import {
   AuthError,
   BooksError,
@@ -7,16 +6,17 @@ import {
   NotFoundError,
   PaymentError,
   RateLimitError,
+  ResponseError,
   normalizeError,
 } from "../../src/core/errors.ts";
 
-/** Build the structured failure ofetch raises, which is what normalizeError reads. */
-function fetchError(status: number, url: string, headers?: Record<string, string>): FetchError {
-  const error = new FetchError(`[GET] "${url}": ${status}`);
-  error.statusCode = status;
-  error.request = url;
-  error.response = { status, headers: new Headers(headers) } as FetchError["response"];
-  return error;
+/** Build the structured failure the client raises, which is what normalizeError reads. */
+function responseError(
+  status: number,
+  url: string,
+  headers?: Record<string, string>,
+): ResponseError {
+  return new ResponseError(status, url, "", new Headers(headers));
 }
 
 describe("secret redaction", () => {
@@ -83,17 +83,19 @@ describe("normalizeError", () => {
   });
 
   it("maps statuses onto the hierarchy by structured status, not message text", () => {
-    expect(normalizeError(fetchError(404, "https://x.test"), "bn")).toBeInstanceOf(NotFoundError);
-    expect(normalizeError(fetchError(401, "https://x.test"), "bn")).toBeInstanceOf(AuthError);
-    expect(normalizeError(fetchError(402, "https://x.test"), "bn")).toBeInstanceOf(PaymentError);
+    expect(normalizeError(responseError(404, "https://x.test"), "bn")).toBeInstanceOf(
+      NotFoundError,
+    );
+    expect(normalizeError(responseError(401, "https://x.test"), "bn")).toBeInstanceOf(AuthError);
+    expect(normalizeError(responseError(402, "https://x.test"), "bn")).toBeInstanceOf(PaymentError);
     // A public catalog answering 403 has refused the client, not asked it to pay.
-    expect(normalizeError(fetchError(403, "https://x.test"), "bn")).toBeInstanceOf(AuthError);
-    expect(normalizeError(fetchError(500, "https://x.test"), "bn")).toBeInstanceOf(HTTPError);
+    expect(normalizeError(responseError(403, "https://x.test"), "bn")).toBeInstanceOf(AuthError);
+    expect(normalizeError(responseError(500, "https://x.test"), "bn")).toBeInstanceOf(HTTPError);
   });
 
   it("reads retry-after off the response headers", () => {
     const error = normalizeError(
-      fetchError(429, "https://x.test", { "retry-after": "30" }),
+      responseError(429, "https://x.test", { "retry-after": "30" }),
       "openlibrary",
     );
     expect(error).toBeInstanceOf(RateLimitError);
@@ -101,7 +103,7 @@ describe("normalizeError", () => {
   });
 
   it("keeps the status and provider of a server failure", () => {
-    const error = normalizeError(fetchError(503, "https://gutendex.com/books"), "gutendex");
+    const error = normalizeError(responseError(503, "https://gutendex.com/books"), "gutendex");
     expect((error as HTTPError).statusCode).toBe(503);
     expect(error.provider).toBe("gutendex");
   });
