@@ -1,7 +1,7 @@
 /** Auto-select a provider from the environment and the operation being requested */
 
 import { create, has, isConfigured, providers, supportsOperation } from "./registry.ts";
-import { UnknownProviderError } from "./errors.ts";
+import { InvalidInputError, UnknownProviderError } from "./errors.ts";
 import type { Provider, ProviderOperation } from "./provider.ts";
 import type { ProviderCapabilities } from "./types.ts";
 
@@ -22,12 +22,14 @@ export function providerArg(value?: string): string | undefined {
  * Registered providers that serve `capability` and are usable in this environment, in
  * registration order.
  *
- * The three operations are one question and the two result kinds are another, but callers need
+ * The four operations are one question and the two result kinds are another, but callers need
  * both from one list: an ISBN lookup that walks a catalog which cannot search by ISBN wastes a
  * request and reports "not found" for a book the next provider has.
  */
 export function usableProviders(capability: keyof ProviderCapabilities): string[] {
-  return providers().filter((name) => isConfigured(name) && create(name).capabilities[capability]);
+  return providers().filter(
+    (name) => isConfigured(name) && create(name).capabilities[capability] === true,
+  );
 }
 
 /**
@@ -89,4 +91,15 @@ export function selectProvider(
 ): SelectedProvider {
   const name = resolveProvider(providerArg(preferred), operation);
   return { name, provider: create(name) };
+}
+
+/** `selectProvider` for an operation without a fan-out, refusing the reserved "all" by name. */
+export function selectOneProvider(
+  preferred: string | undefined,
+  operation: ProviderOperation,
+): SelectedProvider {
+  if (isAllProviders(preferred)) {
+    throw new InvalidInputError(`${operation} reads one provider; leave provider empty`);
+  }
+  return selectProvider(preferred, operation);
 }

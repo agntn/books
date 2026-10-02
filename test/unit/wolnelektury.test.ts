@@ -34,6 +34,7 @@ describe("wolnelektury provider", () => {
       search: true,
       book: true,
       text: true,
+      searchText: false,
       isbn: false,
       ratings: false,
     });

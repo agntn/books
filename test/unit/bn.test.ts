@@ -75,6 +75,7 @@ describe("bn provider", () => {
       search: true,
       book: true,
       text: false,
+      searchText: false,
       isbn: true,
       ratings: false,
     });

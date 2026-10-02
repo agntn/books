@@ -64,6 +64,7 @@ describe("books Pi extension", () => {
       "books_search",
       "books_get",
       "books_text",
+      "books_text_search",
     ]);
   });
 

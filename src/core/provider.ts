@@ -7,6 +7,8 @@ import type {
   ProviderConfig,
   SearchOptions,
   TextOptions,
+  TextSearchOptions,
+  TextSearchResult,
 } from "./types.ts";
 import { getJSON, getText, readTextSlice } from "./client.ts";
 import type { TextSlice } from "./client.ts";
@@ -46,9 +48,12 @@ export abstract class Provider {
   /** Read a slice of a book's full text. */
   text?(query: BookQuery, options?: TextOptions): Promise<BookText>;
 
-  /** Execute a provider-attributed GET request for JSON using the configured timeout. */
-  protected getJSON<T>(url: string): Promise<T> {
-    return getJSON<T>(url, { timeout: this.timeout, provider: this.name });
+  /** Find a phrase inside scanned books, best match first. */
+  searchText?(query: string, options?: TextSearchOptions): Promise<TextSearchResult>;
+
+  /** Provider-attributed GET for JSON; a configured timeout beats the `defaultTimeout`. */
+  protected getJSON<T>(url: string, defaultTimeout?: number): Promise<T> {
+    return getJSON<T>(url, { timeout: this.timeout ?? defaultTimeout, provider: this.name });
   }
 
   /** Execute a provider-attributed GET request for an HTML page. */
@@ -158,7 +163,7 @@ export function searchTerms(query: BookQuery): string {
 }
 
 /** Operation names accepted by `requireOperation` - one per provider method. */
-export type ProviderOperation = "search" | "book" | "text";
+export type ProviderOperation = "search" | "book" | "text" | "searchText";
 
 /**
  * Return a bound provider method after checking its capability flag.
@@ -173,7 +178,7 @@ export function requireOperation<K extends ProviderOperation>(
   operation: K,
 ): NonNullable<Provider[K]> {
   const method = provider[operation];
-  if (!provider.capabilities[operation] || typeof method !== "function") {
+  if (provider.capabilities[operation] !== true || typeof method !== "function") {
     throw new UnsupportedOperationError(operation, provider.name);
   }
   return method.bind(provider) as NonNullable<Provider[K]>;

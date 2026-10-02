@@ -2,20 +2,21 @@
 
 ## Scope
 
-Unified book provider library. Normalizes catalog search, bibliographic records and public-domain
-full text across five backends, with ISBN validation and UTF-8-safe range reading in core.
+Unified book provider library. Normalizes catalog search, bibliographic records, public-domain
+full text and phrase search inside scans across five backends, with ISBN validation and UTF-8-safe
+range reading in core.
 Exports a CLI (`books` binary), a programmatic API, an MCP server (`@agntn/books/mcp`), Vercel AI
 SDK tools (`@agntn/books/ai`), and Pi/OMP extensions.
 
 ## Providers
 
-| Provider     | Auth | Capabilities                | Notes                                                    |
-| ------------ | ---- | --------------------------- | -------------------------------------------------------- |
-| openlibrary  | none | search, book, isbn, ratings | Work/edition split; a record is stitched from both       |
-| gutendex     | none | search, book, text          | Project Gutenberg; no dates, no ISBNs; flaky under load  |
-| wolnelektury | none | search, book, text          | JSON API without search; the result page is read as HTML |
-| bn           | none | search, book, isbn          | Flat fields are mangled MARC; the MARC itself is read    |
-| lubimyczytac | none | search, book, ratings       | HTML only; the schema.org node is the durable surface    |
+| Provider     | Auth | Capabilities                            | Notes                                                    |
+| ------------ | ---- | --------------------------------------- | -------------------------------------------------------- |
+| openlibrary  | none | search, book, searchText, isbn, ratings | Work/edition split; a record is stitched from both       |
+| gutendex     | none | search, book, text                      | Project Gutenberg; no dates, no ISBNs; flaky under load  |
+| wolnelektury | none | search, book, text                      | JSON API without search; the result page is read as HTML |
+| bn           | none | search, book, isbn                      | Flat fields are mangled MARC; the MARC itself is read    |
+| lubimyczytac | none | search, book, ratings                   | HTML only; the schema.org node is the durable surface    |
 
 No built-in provider needs a credential. The `envKey` machinery on `ProviderConstructor` exists
 for providers a host registers, and `listProviders()` reports it.
@@ -32,6 +33,11 @@ answered; three candidates were dropped.
   keys, one request each. **A record exists under ISBN `9999999999999`** - catalogs store what
   cataloguers typed, and that number fails its check digit, so `assertIsbn` refuses it before the
   request. `/isbn/0000000000000.json` is a real 404.
+  `/search/inside.json?q=&page=&limit=` (verified 2026-10-02) searches the text of the archive.org
+  scans, lending-only ones included. `limit` works up to at least 1000 and pages offset by it.
+  The query is a phrase. A hit carries `fields.identifier[0]`, `meta_title`, `meta_creator`,
+  `meta_year`, `page_num` as `[[n]]` and `highlight.text` with `{{{ }}}` around the match. An
+  uncached query took 10 to 16 seconds, a cached one 3; `identifier:` in `q` is ignored.
 - **Gutendex** (`gutendex.com`): `/books?search=` and `/books/{id}` verified. `/books?search=` 301s
   to `/books/?search=`. `formats` is a media-type map; the plain text is `text/plain; charset=utf-8`
   and `gutenberg.org` honours `Range` (206 with `Content-Range`). **Availability is uneven**: the
@@ -66,10 +72,12 @@ answered; three candidates were dropped.
 
 ## Conventions
 
-- Three operations: `search(query, options)`, `book(query)` and `text(query, options)`. `book` is
-  abstract on `Provider`; `search` and `text` are optional methods, and `requireOperation()` checks
-  the capability flag _and_ the method before returning it bound
-- `ProviderCapabilities` carries the three operations plus `isbn` and `ratings`, which describe
+- Four operations: `search(query, options)`, `book(query)`, `text(query, options)` and
+  `searchText(query, options)`. `book` is abstract on `Provider`; the others are optional
+  methods, and `requireOperation()` checks the capability flag _and_ the method before returning
+  it bound. `searchText` is an optional flag, so a host's provider compiles without it; read it
+  with `=== true`
+- `ProviderCapabilities` carries the four operations plus `isbn` and `ratings`, which describe
   what a provider can resolve and what its records hold. `usableProviders()` answers for all five,
   which is what keeps an ISBN lookup out of the catalogs that would answer it wrongly
 - `BookQuery` fields are alternatives, not a conjunction: `isbn`, `id`, or `title` (sharpened by
@@ -127,7 +135,7 @@ answered; three candidates were dropped.
 - `src/core/all.ts` - `searchAll`, `bookAll`, `bookWithFallback`, `textWithFallback`
 - `src/core/format.ts` - plain-text formatters shared by every output surface
 - `src/providers/*.ts` - one file per provider; order in `index.ts` is the fallback order
-- `src/tools.ts` - the four tool definitions every agent surface serves through `@agntn/tools`:
+- `src/tools.ts` - the tool definitions every agent surface serves through `@agntn/tools`:
   one TypeBox schema each, built with `Type` from `@agntn/tools` (OMP rewrites a bare `typebox`
   import). Optional text arguments take `""` as absent; the executors trim and drop blanks
 - `src/tool-operations.ts` - executors behind them: the `core/format.ts` text for the model on
@@ -163,6 +171,9 @@ answered; three candidates were dropped.
   byte ranges the way a static file server does, so the range arithmetic is exercised for real
 - Open Library's `search.json` reports the language of some edition in its index, not the language
   of the book: a search for Dune can come back `gre`
+- `openlibrary.searchText()` gives the full-text endpoint 30 seconds unless a timeout is
+  configured. With `book` it filters hits client side and reads at most `MAX_TEXT_SEARCH_PAGES`
+  (10) pages; snippets are not a text slice, so `text` stays false
 - `openlibrary.book()` resolves at most `MAX_AUTHOR_LOOKUPS` (5) author names; an anthology's
   remaining contributors are dropped rather than fanned out into dozens of requests
 - Record keys arriving in a provider's response go through `recordPath()` before they are
@@ -187,7 +198,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 20 files / 197 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 20 files / 211 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
 because the publish job tests before it builds.

@@ -95,6 +95,7 @@ class Lubimyczytac extends Provider {
       search: true,
       book: true,
       text: false,
+      searchText: false,
       isbn: false,
       ratings: true,
     };

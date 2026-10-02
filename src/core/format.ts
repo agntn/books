@@ -2,7 +2,15 @@
 
 import type { FallbackResult, ProviderOutcome } from "./all.ts";
 import type { ProviderListing } from "./registry.ts";
-import type { Book, BookMatch, BookText, Rating } from "./types.ts";
+import type {
+  Book,
+  BookMatch,
+  BookText,
+  Rating,
+  TextMatch,
+  TextSearchOptions,
+  TextSearchResult,
+} from "./types.ts";
 
 /** Reader score with its scale, because 8.2 means different things out of 5 and out of 10. */
 export function formatRating(rating: Rating): string {
@@ -112,6 +120,51 @@ export function formatText(text: BookText): string {
     more,
     text.url ? `Source: ${text.url}` : null,
     text.attribution ? text.attribution : null,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
+/** One scan of a full-text search: a label line, its passages, and the reader link. */
+function formatTextMatch(match: TextMatch): string[] {
+  const details = [
+    match.year !== undefined ? String(match.year) : undefined,
+    match.page !== undefined ? `page ${match.page}` : undefined,
+    `id=${match.id}`,
+  ].filter(Boolean);
+  const title = match.title ? oneLine(match.title) : match.id;
+  return [
+    `${title} - ${formatAuthors(match.authors)}  (${details.join(", ")})`,
+    ...match.snippets.map((snippet) => `  > ${oneLine(snippet)}`),
+    `  ${match.url}`,
+  ];
+}
+
+/** Full-text matches with their passages, each on one line so OCR line breaks can't fake rows. */
+export function formatTextSearch(result: TextSearchResult, options?: TextSearchOptions): string {
+  const query = oneLine(result.query);
+  const book = options?.book?.trim();
+  const header = book
+    ? `[${result.provider}] "${query}" in ${oneLine(book)}`
+    : `[${result.provider}] ${result.total} scans contain "${query}"`;
+  const more =
+    result.nextPage === undefined
+      ? null
+      : `(more hits - read on with page ${result.nextPage}${book ? " and the same book" : ""})`;
+
+  if (result.matches.length === 0) {
+    if (!book && result.total === 0) return `[${result.provider}] No scan contains "${query}"`;
+    const reason = book
+      ? `no passage up to page ${result.page} of ${result.total} hits; a rarer phrase from the same book ranks it higher`
+      : `none on page ${result.page}`;
+    return [`${header}: ${reason}`, more].filter((line) => line !== null).join("\n");
+  }
+
+  return [
+    `${header} (page ${result.page}):`,
+    ...result.matches.flatMap((match) => formatTextMatch(match)),
+    more,
+    result.attribution ?? null,
   ]
     .filter((line) => line !== null)
     .join("\n");

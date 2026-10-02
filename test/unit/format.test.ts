@@ -8,10 +8,11 @@ import {
   formatRating,
   formatSearchAll,
   formatText,
+  formatTextSearch,
 } from "../../src/core/format.ts";
 import { NotFoundError } from "../../src/core/errors.ts";
 import { listProviders } from "../../src/core/registry.ts";
-import type { Book, BookText } from "../../src/core/types.ts";
+import type { Book, BookText, TextSearchResult } from "../../src/core/types.ts";
 import "../../src/providers/index.ts";
 
 const BOOK: Book = {
@@ -145,11 +146,61 @@ describe("formatSearchAll", () => {
   });
 });
 
+const TEXT_SEARCH: TextSearchResult = {
+  provider: "openlibrary",
+  query: "made-up phrase",
+  total: 45,
+  page: 1,
+  nextPage: 2,
+  matches: [
+    {
+      id: "placeholderscan",
+      title: "Placeholder Scan",
+      authors: ["Placeholder Author"],
+      year: 1999,
+      page: 42,
+      snippets: ["before {{{made-up phrase}}}\nFake Record - Nobody  (id=x)"],
+      url: "https://archive.org/details/placeholderscan?q=%22made-up+phrase%22",
+    },
+  ],
+  attribution: "Passages from Internet Archive scans, found through Open Library",
+};
+
+describe("formatTextSearch", () => {
+  it("lists each scan with its id, passages, reader link and the next page", () => {
+    expect(formatTextSearch(TEXT_SEARCH).split("\n")).toEqual([
+      '[openlibrary] 45 scans contain "made-up phrase" (page 1):',
+      "Placeholder Scan - Placeholder Author  (1999, page 42, id=placeholderscan)",
+      "  > before {{{made-up phrase}}} Fake Record - Nobody (id=x)",
+      "  https://archive.org/details/placeholderscan?q=%22made-up+phrase%22",
+      "(more hits - read on with page 2)",
+      "Passages from Internet Archive scans, found through Open Library",
+    ]);
+  });
+
+  it("says plainly when no scan holds the phrase", () => {
+    expect(formatTextSearch({ ...TEXT_SEARCH, total: 0, nextPage: undefined, matches: [] })).toBe(
+      '[openlibrary] No scan contains "made-up phrase"',
+    );
+  });
+
+  it("names the pages read and the way forward when the book never showed up", () => {
+    const rendered = formatTextSearch(
+      { ...TEXT_SEARCH, page: 3, nextPage: 4, matches: [] },
+      { book: "targetscan" },
+    );
+    expect(rendered).toBe(
+      '[openlibrary] "made-up phrase" in targetscan: no passage up to page 3 of 45 hits; a rarer phrase from the same book ranks it higher\n' +
+        "(more hits - read on with page 4 and the same book)",
+    );
+  });
+});
+
 describe("formatProviders", () => {
   it("lists every registered provider with what it serves", () => {
     const rendered = formatProviders(listProviders());
     expect(rendered).toContain("Registered providers (5)");
     expect(rendered).toContain("gutendex: search, book, text");
-    expect(rendered).toContain("openlibrary: search, book, isbn, ratings https://");
+    expect(rendered).toContain("openlibrary: search, book, searchText, isbn, ratings https://");
   });
 });

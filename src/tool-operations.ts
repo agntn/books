@@ -24,11 +24,12 @@ import {
   formatProviders,
   formatSearchAll,
   formatText,
+  formatTextSearch,
 } from "./core/format.ts";
 import { requireOperation } from "./core/provider.ts";
 import { listProviders, type ProviderListing } from "./core/registry.ts";
-import { isAllProviders, providerArg, selectProvider } from "./core/resolve.ts";
-import type { Book, BookMatch, BookText } from "./core/types.ts";
+import { isAllProviders, providerArg, selectOneProvider, selectProvider } from "./core/resolve.ts";
+import type { Book, BookMatch, BookText, TextSearchResult } from "./core/types.ts";
 import "./providers/index.ts";
 
 /** Providers a fallback walk passed over, with the reason for each. */
@@ -42,6 +43,8 @@ export type BookDetails =
   | { comparison: SerializedOutcome<Book>[] };
 /** `slice`, not `text`: the AI SDK output adds the answer text as `text`. */
 export type TextDetails = { provider: string; slice: BookText; skipped?: Skipped };
+/** `search`, not `text`: the AI SDK output adds the answer text as `text`. */
+export type TextSearchDetails = { provider: string; search: TextSearchResult };
 export type ProvidersDetails = { providers: ProviderListing[] };
 
 export interface SearchParams {
@@ -64,6 +67,15 @@ export interface TextParams {
   readonly id?: string;
   readonly offset?: number;
   readonly maxBytes?: number;
+  readonly provider?: string;
+}
+
+export interface TextSearchParams {
+  readonly query: string;
+  readonly book?: string;
+  readonly page?: number;
+  readonly limit?: number;
+  readonly maxPages?: number;
   readonly provider?: string;
 }
 
@@ -162,6 +174,26 @@ export async function booksText(params: TextParams): Promise<ToolResult<TextDeta
   const { name, provider } = selectProvider(named, "text");
   const slice = await requireOperation(provider, "text")(query, options);
   return answer(formatText(slice), { provider: name, slice });
+}
+
+/**
+ * Finds a phrase inside scanned books, or inside one scan.
+ *
+ * @param params - Phrase, scan id, paging and the provider.
+ * @returns {Promise<ToolResult<TextSearchDetails>>} The passages.
+ */
+export async function booksTextSearch(
+  params: TextSearchParams,
+): Promise<ToolResult<TextSearchDetails>> {
+  const options = {
+    book: optional(params.book),
+    page: params.page,
+    limit: params.limit,
+    maxPages: params.maxPages,
+  };
+  const { name, provider } = selectOneProvider(providerArg(params.provider), "searchText");
+  const search = await requireOperation(provider, "searchText")(params.query.trim(), options);
+  return answer(formatTextSearch(search, options), { provider: name, search });
 }
 
 /**

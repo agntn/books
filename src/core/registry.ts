@@ -90,7 +90,7 @@ export function isConfigured(name: string): boolean {
 export function supportsOperation(name: string, operation: ProviderOperation): boolean {
   const entry = registry.get(name);
   if (!entry) return false;
-  return new entry.providerClass({}).capabilities[operation];
+  return new entry.providerClass({}).capabilities[operation] === true;
 }
 
 /** One row of `listProviders()`. */

@@ -206,6 +206,7 @@ class Bn extends Provider {
       search: true,
       book: true,
       text: false,
+      searchText: false,
       isbn: true,
       ratings: false,
     };
