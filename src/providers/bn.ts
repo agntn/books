@@ -61,39 +61,57 @@ const TAG = {
 
 /** A MARC data field: indicators plus an ordered list of single-key subfields. */
 interface MarcDataField {
-  ind1?: string;
-  ind2?: string;
-  subfields?: Record<string, string>[];
+  readonly ind1?: string;
+  readonly ind2?: string;
+  readonly subfields?: readonly Readonly<Record<string, string>>[];
 }
 
 /** Each entry of `marc.fields` is an object with exactly one key: the MARC tag. */
-type MarcField = Record<string, string | MarcDataField>;
+type MarcField = Readonly<Record<string, string | MarcDataField>>;
 
 interface BnRecord {
-  id?: number;
+  readonly id?: number;
   /** Withdrawn records stay in the response with their fields emptied */
-  deleted?: boolean;
-  title?: string;
-  author?: string;
-  publisher?: string;
-  publicationYear?: string;
-  isbnIssn?: string;
-  language?: string;
-  languageOfOriginal?: string;
-  subject?: string;
-  genre?: string;
-  kind?: string;
-  formOfWork?: string;
-  placeOfPublication?: string;
-  marc?: { leader?: string; fields?: MarcField[] };
+  readonly deleted?: boolean;
+  readonly title?: string;
+  readonly author?: string;
+  readonly publisher?: string;
+  readonly publicationYear?: string;
+  readonly isbnIssn?: string;
+  readonly language?: string;
+  readonly languageOfOriginal?: string;
+  readonly subject?: string;
+  readonly genre?: string;
+  readonly kind?: string;
+  readonly formOfWork?: string;
+  readonly placeOfPublication?: string;
+  readonly marc?: Readonly<{ leader?: string; fields?: readonly MarcField[] }>;
 }
 
 interface BnResponse {
-  bibs?: BnRecord[];
-  nextPage?: string;
+  readonly bibs?: readonly BnRecord[];
+  readonly nextPage?: string;
 }
 
-/** All values of one subfield of one MARC tag, in record order. */
+/** Parameters the bibliographic endpoint documents; nothing else is ever sent. */
+interface BnQuery {
+  readonly title?: string;
+  readonly author?: string;
+  readonly isbnIssn?: string;
+  /** Turns on `|` between alternatives inside one field */
+  readonly boolean?: "true";
+  readonly id?: string;
+  readonly limit?: number;
+}
+
+/**
+ * All values of one subfield of one MARC tag, in record order.
+ *
+ * @param {BnRecord} record The catalog record.
+ * @param {string} tag MARC tag, such as `245`.
+ * @param {string} subfield Subfield code, such as `a`.
+ * @returns {string[]} The trimmed values.
+ */
 function marcValues(record: BnRecord, tag: string, subfield: string): string[] {
   const values: string[] = [];
   for (const field of record.marc?.fields ?? []) {
@@ -117,6 +135,11 @@ function marcValues(record: BnRecord, tag: string, subfield: string): string[] {
  * Trimmed and sliced rather than matched with a regex: `/\s*[/:;,=]$/` backtracks from every
  * position of a long run of spaces, which measured 1.5 s on 50k of them. The catalog decides how
  * long this field is, so that is not a cost to accept.
+ *
+ * @param {BnRecord} record The catalog record.
+ * @param {string} tag MARC tag, such as `245`.
+ * @param {string} subfield Subfield code, such as `a`.
+ * @returns {string | undefined} The value without trailing punctuation or quotes.
  */
 function marcValue(record: BnRecord, tag: string, subfield: string): string | undefined {
   const value = marcValues(record, tag, subfield)[0];
@@ -132,13 +155,23 @@ function marcValue(record: BnRecord, tag: string, subfield: string): string | un
   return unquoted || undefined;
 }
 
-/** `295 s. ;` and `XII, 400 stron` both mean a page count. */
+/**
+ * `295 s. ;` and `XII, 400 stron` both mean a page count.
+ *
+ * @param {string | undefined} physical MARC 300 `a`, the physical description.
+ * @returns {number | undefined} The page count.
+ */
 function parsePages(physical: string | undefined): number | undefined {
   const pages = physical?.match(/(\d+)\s*(?:s\.|str|stron)/i)?.[1];
   return pages ? Number(pages) : undefined;
 }
 
-/** The flat `isbnIssn` field holds every identifier of the record, space separated. */
+/**
+ * The flat `isbnIssn` field holds every identifier of the record, space separated.
+ *
+ * @param {BnRecord} record The catalog record.
+ * @returns {string[]} The identifiers from MARC 020 and the flat field.
+ */
 function splitIdentifiers(record: BnRecord): string[] {
   return uniqueStrings([
     ...marcValues(record, TAG.isbn, "a"),
@@ -154,6 +187,9 @@ function splitIdentifiers(record: BnRecord): string[] {
  * them side by side as if they were the same book in two notations, which for a title with
  * several editions they are not. The first valid identifier decides, and the other form is only
  * reported when it converts to exactly that number.
+ *
+ * @param {BnRecord} record The catalog record.
+ * @returns {{ isbn10?: string; isbn13?: string }} Both forms of the record's first ISBN.
  */
 function readIsbns(record: BnRecord): { isbn10?: string; isbn13?: string } {
   const identifiers = splitIdentifiers(record);
@@ -171,18 +207,32 @@ function readIsbns(record: BnRecord): { isbn10?: string; isbn13?: string } {
 /**
  * Both lengths of one ISBN. The catalog matches the string the cataloguer typed, and editions
  * before 2007 were catalogued with ten digits, so a caller's thirteen alone would miss them.
+ *
+ * @param {string} isbn A valid, normalized ISBN.
+ * @returns {string[]} The ISBN, and its other length when it has one.
  */
 function isbnForms(isbn: string): string[] {
   const other = isIsbn10(isbn) ? isbn10To13(isbn) : isbn13To10(isbn);
   return other ? [isbn, other] : [isbn];
 }
 
-/** Title, subtitle and the statement of responsibility, as MARC 245 records them. */
+/**
+ * Title and subtitle, as MARC 245 records them.
+ *
+ * @param {BnRecord} record The catalog record.
+ * @returns {{ title: string; subtitle?: string }} The title, and the subtitle when there's one.
+ */
 function readTitle(record: BnRecord): { title: string; subtitle?: string } {
   const title = marcValue(record, TAG.title, "a") ?? record.title?.split(" / ")[0]?.trim() ?? "";
   return { title, subtitle: marcValue(record, TAG.title, "b") };
 }
 
+/**
+ * Main and added authors, without the trailing punctuation MARC gives them.
+ *
+ * @param {BnRecord} record The catalog record.
+ * @returns {string[]} The distinct names.
+ */
 function readAuthors(record: BnRecord): string[] {
   const authors = [
     ...marcValues(record, TAG.mainAuthor, "a"),
@@ -218,6 +268,10 @@ class Bn extends Provider {
    * There is no parameter here that searches everything, so a query is tried as a title first
    * and as an author only when the title index has nothing. That is what makes a bare surname
    * work without charging every other caller a second request.
+   *
+   * @param {string} query Title or author.
+   * @param {SearchOptions} [options] Result limit.
+   * @returns {Promise<BookMatch[]>} Title matches, or author matches when there are none.
    */
   override async search(query: string, options?: SearchOptions): Promise<BookMatch[]> {
     assertQuery(query, Bn.key);
@@ -286,7 +340,12 @@ class Bn extends Provider {
     };
   }
 
-  /** The API is a data endpoint; the record a human reads lives on the catalog site. */
+  /**
+   * The API is a data endpoint; the record a human reads lives on the catalog site.
+   *
+   * @param {number | undefined} id Record id.
+   * @returns {string | undefined} The URL, or `undefined` without an id.
+   */
   private recordUrl(id: number | undefined): string | undefined {
     return id === undefined
       ? undefined
@@ -331,16 +390,11 @@ class Bn extends Provider {
    * Only documented parameters are ever sent: the API ignores what it does not recognize and
    * answers with the head of the whole catalog, so a typo would return real-looking records for
    * a query nobody made.
+   *
+   * @param {BnQuery} params Query parameters.
+   * @returns {Promise<BnRecord[]>} Live records, at most `limit` of them.
    */
-  private async query(params: {
-    title?: string;
-    author?: string;
-    isbnIssn?: string;
-    /** Turns on `|` between alternatives inside one field */
-    boolean?: "true";
-    id?: string;
-    limit?: number;
-  }): Promise<BnRecord[]> {
+  private async query(params: BnQuery): Promise<BnRecord[]> {
     const want = params.limit;
     const url = `${this.baseUrl}/api/institutions/bibs.json${buildQuery({
       ...params,

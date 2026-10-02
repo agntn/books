@@ -34,32 +34,37 @@ const DEFAULT_BASE_URL = "https://gutendex.com";
 const BOOK_ID = /^\d+$/;
 
 interface GutendexAuthor {
-  name?: string;
-  birth_year?: number | null;
-  death_year?: number | null;
+  readonly name?: string;
+  readonly birth_year?: number | null;
+  readonly death_year?: number | null;
 }
 
 interface GutendexBook {
-  id?: number;
-  title?: string;
-  authors?: GutendexAuthor[];
-  translators?: GutendexAuthor[];
-  summaries?: string[];
-  subjects?: string[];
-  bookshelves?: string[];
-  languages?: string[];
-  copyright?: boolean | null;
-  media_type?: string;
-  formats?: Record<string, string>;
-  download_count?: number;
+  readonly id?: number;
+  readonly title?: string;
+  readonly authors?: readonly GutendexAuthor[];
+  readonly translators?: readonly GutendexAuthor[];
+  readonly summaries?: readonly string[];
+  readonly subjects?: readonly string[];
+  readonly bookshelves?: readonly string[];
+  readonly languages?: readonly string[];
+  readonly copyright?: boolean | null;
+  readonly media_type?: string;
+  readonly formats?: Readonly<Record<string, string>>;
+  readonly download_count?: number;
 }
 
 interface GutendexResponse {
-  count?: number;
-  results?: GutendexBook[];
+  readonly count?: number;
+  readonly results?: readonly GutendexBook[];
 }
 
-/** Page for a book on gutenberg.org, which is where a citation should point. */
+/**
+ * Page for a book on gutenberg.org, which is where a citation should point.
+ *
+ * @param {number | undefined} id Gutenberg book number.
+ * @returns {string | undefined} The page URL, or `undefined` without an id.
+ */
 function bookUrl(id: number | undefined): string | undefined {
   return id === undefined ? undefined : `https://www.gutenberg.org/ebooks/${id}`;
 }
@@ -70,19 +75,34 @@ function bookUrl(id: number | undefined): string | undefined {
  * The key carries its charset (`text/plain; charset=utf-8`), and older entries use a bare
  * `text/plain`; both are accepted, ASCII and Latin-1 renderings are not - they would decode into
  * mojibake for every text that needs more than ASCII.
+ *
+ * @param {Readonly<Record<string, string>> | undefined} formats Gutendex's media-type map.
+ * @returns {string | undefined} The file URL, or `undefined` when there's no UTF-8 text.
  */
-function plainTextUrl(formats: Record<string, string> | undefined): string | undefined {
+function plainTextUrl(formats: Readonly<Record<string, string>> | undefined): string | undefined {
   const entries = Object.entries(formats ?? {});
   const utf8 = entries.find(([type]) => /^text\/plain;\s*charset=utf-8/i.test(type));
   if (utf8) return utf8[1];
   return entries.find(([type]) => /^text\/plain$/i.test(type.trim()))?.[1];
 }
 
-function toFormats(formats: Record<string, string> | undefined): BookFormat[] {
+/**
+ * Every rendering of the book, as `Book.formats` lists them.
+ *
+ * @param {Readonly<Record<string, string>> | undefined} formats Gutendex's media-type map.
+ * @returns {BookFormat[]} One entry per media type.
+ */
+function toFormats(formats: Readonly<Record<string, string>> | undefined): BookFormat[] {
   return Object.entries(formats ?? {}).map(([type, url]) => ({ type, url }));
 }
 
-function authorNames(authors: GutendexAuthor[] | undefined): string[] {
+/**
+ * Names of a book's authors or translators.
+ *
+ * @param {readonly GutendexAuthor[] | undefined} authors People as Gutendex lists them.
+ * @returns {string[]} The distinct names.
+ */
+function authorNames(authors: readonly GutendexAuthor[] | undefined): string[] {
   return uniqueStrings((authors ?? []).map((author) => author.name));
 }
 
@@ -148,6 +168,11 @@ class Gutendex extends Provider {
    *
    * The Gutenberg licence header travels inside the file itself and stays there. Stripping it
    * would be cutting out the one thing that permits handing the text on at all.
+   *
+   * @param {BookQuery} query The book to read.
+   * @param {TextOptions} [options] Offset and byte count.
+   * @returns {Promise<BookText>} The slice.
+   * @throws {NotFoundError} When the book has no UTF-8 plain text.
    */
   override async text(query: BookQuery, options?: TextOptions): Promise<BookText> {
     const book = await this.locate(assertBookQuery(query, Gutendex.key));
@@ -170,7 +195,15 @@ class Gutendex extends Provider {
     };
   }
 
-  /** Resolve a query to one catalog record. */
+  /**
+   * Resolve a query to one catalog record.
+   *
+   * @param {BookQuery} query A checked book query.
+   * @returns {Promise<GutendexBook>} The record.
+   * @throws {InvalidInputError} When the id isn't a Gutenberg book number.
+   * @throws {UnsupportedOperationError} When the query carries only an ISBN.
+   * @throws {NotFoundError} When the search finds nothing.
+   */
   private async locate(query: BookQuery): Promise<GutendexBook> {
     if (query.id) {
       const id = query.id.trim();

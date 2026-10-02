@@ -25,6 +25,6 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src"],
+  "include": ["src", "packages/shared"],
   "exclude": ["node_modules", "dist"]
 }

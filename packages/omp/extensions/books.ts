@@ -37,8 +37,11 @@ function loadTools(): Promise<typeof BookTools> {
  * @returns {string} The ISBN, title, id or query, or "book".
  */
 function describeQuery(args: Readonly<Record<string, unknown>>): string {
-  const named = args.query || args.isbn || args.title || args.id || "book";
-  return String(named).slice(0, PREVIEW_LENGTH);
+  const named = [args.query, args.isbn, args.title, args.id].find(
+    (value): value is string | number =>
+      (typeof value === "string" || typeof value === "number") && Boolean(value),
+  );
+  return String(named ?? "book").slice(0, PREVIEW_LENGTH);
 }
 
 /**

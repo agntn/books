@@ -35,10 +35,13 @@ const CREDENTIAL_PATH_SEGMENT =
  *
  * Both shapes are covered because the message crosses a trust boundary: an MCP server and the
  * agent extensions hand this text to a model, not only to the operator who owns the key.
+ *
+ * @param {string} url URL or text that may carry one.
+ * @returns {string} The text with credentials replaced by `REDACTED`.
  */
 function sanitizeUrl(url: string): string {
   return url
-    .replace(/([?&])(api[-_]?key|key|secret|token)=[^&#]*/gi, "$1$2=REDACTED")
+    .replaceAll(/([?&])(api[-_]?key|key|secret|token)=[^&#]*/gi, "$1$2=REDACTED")
     .replace(CREDENTIAL_PATH_SEGMENT, "/REDACTED");
 }
 
@@ -162,6 +165,87 @@ export class ResponseError extends Error {
   }
 }
 
+/** What `normalizeError` reads from a failure, gathered once. */
+interface Failure {
+  readonly message: string;
+  readonly lowerMessage: string;
+  readonly status: number;
+  readonly url?: string;
+  readonly body?: string;
+  readonly retryAfter?: string | null;
+  readonly provider?: string;
+}
+
+/**
+ * Map a 404 or a "not found" message.
+ *
+ * @param {Failure} failure The failure being classified.
+ * @returns {BooksError | undefined} A `NotFoundError`, or `undefined` when this isn't one.
+ */
+function notFound(failure: Failure): BooksError | undefined {
+  if (failure.status !== 404 && !failure.lowerMessage.includes("not found")) return undefined;
+  return new NotFoundError(failure.url ?? failure.message, failure.provider);
+}
+
+/**
+ * Map a 429 or a "rate limit" message, keeping `Retry-After` when it's a number.
+ *
+ * @param {Failure} failure The failure being classified.
+ * @returns {BooksError | undefined} A `RateLimitError`, or `undefined` when this isn't one.
+ */
+function rateLimited(failure: Failure): BooksError | undefined {
+  if (failure.status !== 429 && !failure.lowerMessage.includes("rate limit")) return undefined;
+  const retryAfter = Number(failure.retryAfter ?? Number.NaN);
+  return new RateLimitError(
+    failure.provider ?? "unknown",
+    Number.isFinite(retryAfter) ? retryAfter : undefined,
+  );
+}
+
+/**
+ * Map a 402.
+ *
+ * @param {Failure} failure The failure being classified.
+ * @returns {BooksError | undefined} A `PaymentError`, or `undefined` when this isn't one.
+ */
+function paymentRequired(failure: Failure): BooksError | undefined {
+  if (failure.status !== 402) return undefined;
+  return new PaymentError(failure.provider ?? "unknown", failure.status);
+}
+
+/**
+ * Map a 401, a 403 or an "unauthorized" message.
+ *
+ * @param {Failure} failure The failure being classified.
+ * @returns {BooksError | undefined} An `AuthError`, or `undefined` when this isn't one.
+ */
+function refused(failure: Failure): BooksError | undefined {
+  const { status, url } = failure;
+  if (status !== 401 && status !== 403 && !failure.lowerMessage.includes("unauthorized")) {
+    return undefined;
+  }
+  const detail = url ? `HTTP ${status} from ${url}` : failure.message;
+  return new AuthError(failure.provider ?? "unknown", detail);
+}
+
+const TRANSPORT_MESSAGES = ["econnrefused", "etimedout", "timeouterror"];
+
+/**
+ * Map any other HTTP status, a known URL, or a connection failure.
+ *
+ * @param {Failure} failure The failure being classified.
+ * @returns {BooksError | undefined} An `HTTPError`, or `undefined` when this isn't one.
+ */
+function transport(failure: Failure): BooksError | undefined {
+  const { status, url } = failure;
+  const connection = TRANSPORT_MESSAGES.some((text) => failure.lowerMessage.includes(text));
+  if (status <= 0 && !url && !connection) return undefined;
+  return new HTTPError(status, url ?? "unknown", failure.body ?? failure.message, failure.provider);
+}
+
+/** Classifiers in the order they are tried; the first that answers wins. */
+const CLASSIFIERS = [notFound, rateLimited, paymentRequired, refused, transport];
+
 /**
  * Turn an unknown provider or transport failure into the Books error hierarchy.
  *
@@ -171,48 +255,65 @@ export class ResponseError extends Error {
  * HTTP 403 maps onto `AuthError`, not `PaymentError`: on a public catalog a 403 means the
  * service refused the client - a blocked user agent, a country restriction - and none of these
  * backends charges for access.
+ *
+ * @param {unknown} error Whatever the provider or the transport threw.
+ * @param {string} [provider] Provider the request was made for.
+ * @param {string} [requestUrl] URL of the request that failed.
+ * @returns {BooksError} The matching error from the hierarchy.
  */
 export function normalizeError(error: unknown, provider?: string, requestUrl?: string): BooksError {
   if (error instanceof BooksError) return error;
-
   const message = error instanceof Error ? error.message : String(error);
-  const lowerMessage = message.toLowerCase();
-  const response = error instanceof ResponseError ? error : undefined;
-  const statusMatch = message.match(/HTTP (\d{3})/i);
-  const status = response?.status ?? Number(statusMatch?.[1] ?? 0);
-  const url = requestUrl ?? response?.url;
-  const resource = url ?? message;
+  const failure =
+    error instanceof ResponseError
+      ? responseFailure(error, provider, requestUrl)
+      : messageFailure(message, provider, requestUrl);
 
-  if (status === 404 || lowerMessage.includes("not found")) {
-    return new NotFoundError(resource, provider);
+  for (const classify of CLASSIFIERS) {
+    const classified = classify(failure);
+    if (classified) return classified;
   }
-
-  if (status === 429 || lowerMessage.includes("rate limit")) {
-    const retryAfter = Number(response?.headers.get("retry-after") ?? Number.NaN);
-    return new RateLimitError(
-      provider ?? "unknown",
-      Number.isFinite(retryAfter) ? retryAfter : undefined,
-    );
-  }
-
-  if (status === 402) {
-    return new PaymentError(provider ?? "unknown", status);
-  }
-
-  if (status === 401 || status === 403 || lowerMessage.includes("unauthorized")) {
-    const detail = url ? `HTTP ${status} from ${url}` : message;
-    return new AuthError(provider ?? "unknown", detail);
-  }
-
-  if (
-    status > 0 ||
-    url ||
-    lowerMessage.includes("econnrefused") ||
-    lowerMessage.includes("etimedout") ||
-    lowerMessage.includes("timeouterror")
-  ) {
-    return new HTTPError(status, url ?? "unknown", response?.body ?? message, provider);
-  }
-
   return new BooksError(message, provider);
+}
+
+/**
+ * Read a failure from a response the HTTP client rejected.
+ *
+ * @param {Readonly<ResponseError>} response The rejected response.
+ * @param {string} [provider] Provider the request was made for.
+ * @param {string} [requestUrl] URL of the request, when the caller knows it.
+ * @returns {Failure} The fields the classifiers read.
+ */
+function responseFailure(
+  response: Readonly<ResponseError>,
+  provider?: string,
+  requestUrl?: string,
+): Failure {
+  return {
+    message: response.message,
+    lowerMessage: response.message.toLowerCase(),
+    status: response.status,
+    url: requestUrl ?? response.url,
+    body: response.body,
+    retryAfter: response.headers.get("retry-after"),
+    provider,
+  };
+}
+
+/**
+ * Read a failure from a bare message, taking the status from an `HTTP nnn` inside it.
+ *
+ * @param {string} message The error message.
+ * @param {string} [provider] Provider the request was made for.
+ * @param {string} [requestUrl] URL of the request, when the caller knows it.
+ * @returns {Failure} The fields the classifiers read.
+ */
+function messageFailure(message: string, provider?: string, requestUrl?: string): Failure {
+  return {
+    message,
+    lowerMessage: message.toLowerCase(),
+    status: Number(/HTTP (\d{3})/i.exec(message)?.[1] ?? 0),
+    url: requestUrl,
+    provider,
+  };
 }

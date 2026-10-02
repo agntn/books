@@ -5,7 +5,7 @@ import type {
   Theme,
   ToolDefinition,
 } from "@oh-my-pi/pi-coding-agent";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 /** Compiled OMP injects no TUI barrel, so loading it has to fail the test. */
 vi.mock("@oh-my-pi/pi-coding-agent/tui", () => {
@@ -50,7 +50,7 @@ const theme = {
   sep: { dot: " | " },
 } as unknown as Theme;
 
-/** SAFETY: the test host implements the registration-time capabilities the extension uses. */
+/* SAFETY: the test host implements the registration-time capabilities the extension uses. */
 async function registerExtensionTools(): Promise<RegisteredExtension> {
   const tools = new Map<string, ToolDefinition>();
   let label: string | undefined;
@@ -72,7 +72,7 @@ async function registerExtensionTools(): Promise<RegisteredExtension> {
 /** SAFETY: the tested execute functions do not read ExtensionContext. */
 const unusedContext = {} as ExtensionContext;
 
-/**
+/*
  * Runs a tool and reports whether the core refused its arguments. The schema check runs in
  * `execute`, before the executor, so a refusal never reaches a catalog.
  */
@@ -85,8 +85,8 @@ async function outcome(tool: ToolDefinition, params: unknown): Promise<string> {
   );
 }
 
-/** Text of a status line the host would draw for these arguments. */
-function statusLine(tool: ToolDefinition, args: Record<string, unknown>): string {
+/* Text of a status line the host would draw for these arguments. */
+function statusLine(tool: ToolDefinition, args: Readonly<Record<string, unknown>>): string {
   if (!tool.renderCall) throw new Error(`${tool.name} has no call renderer`);
   const rendered = tool.renderCall(args, { expanded: false, isPartial: false }, theme);
   return (rendered as unknown as { text: string }).text;
@@ -101,7 +101,7 @@ const ROUTES = {
   "84.txt.utf-8": { body: "", bytes: FAKE_TEXT_BYTES },
 };
 
-function resultText(result: { content: { text?: string }[] }): string {
+function resultText(result: Readonly<{ content: readonly Readonly<{ text?: string }>[] }>): string {
   return result.content.map((part) => part.text ?? "").join("");
 }
 
@@ -147,7 +147,7 @@ describe("books OMP extension", () => {
   it("strips escape sequences a model or a catalog could put in a status line", async () => {
     const tool = requireTool((await registerExtensionTools()).tools, "books_get");
 
-    expect(statusLine(tool, { title: "Dune\u001b]0;evil\u0007\u001b[31m\u0000  title" })).toBe(
+    expect(statusLine(tool, { title: "Dune\u001B]0;evil\u0007\u001B[31m\u0000  title" })).toBe(
       "success:status.done accent(Books Get): muted(Dune title)",
     );
   });
@@ -156,7 +156,7 @@ describe("books OMP extension", () => {
     const tool = requireTool((await registerExtensionTools()).tools, "books_search");
     const started = performance.now();
 
-    statusLine(tool, { query: "\u001b]".repeat(100_000) });
+    statusLine(tool, { query: "\u001B]".repeat(100_000) });
 
     expect(performance.now() - started).toBeLessThan(500);
   });
@@ -219,7 +219,7 @@ describe("books OMP extension", () => {
     ).text;
     expect(drawn).toContain("\n");
     expect(drawn).toContain("Rozdział pierwszy.");
-    expect(drawn.replace(/\n/g, "")).not.toMatch(/\p{Cc}/u);
+    expect(drawn.replaceAll("\n", "")).not.toMatch(/\p{Cc}/u);
   });
 
   it("fetches a record through the library", async () => {

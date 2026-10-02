@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { InvalidInputError, NotFoundError } from "../../src/core/errors.ts";
 import { create } from "../../src/core/registry.ts";
-import { stubRoutes } from "../helpers.ts";
+import { calledUrl, stubRoutes } from "../helpers.ts";
 import "../../src/providers/bn.ts";
 
 /**
@@ -142,7 +142,7 @@ describe("bn provider", () => {
     await create("bn").book({ isbn: "978-83-7054-091-3" });
     await create("bn").book({ isbn: "8370540910" });
 
-    const [first, second] = fetch.mock.calls.map((call) => new URL(String(call[0])).searchParams);
+    const [first, second] = fetch.mock.calls.map((call) => new URL(calledUrl(call)).searchParams);
     expect(first?.get("isbnIssn")).toBe("9788370540913 | 8370540910");
     expect(first?.get("boolean")).toBe("true");
     expect(second?.get("isbnIssn")).toBe("8370540910 | 9788370540913");
@@ -154,7 +154,7 @@ describe("bn provider", () => {
 
     await create("bn").book({ isbn: "9791090636071" });
 
-    const params = new URL(String(fetch.mock.calls[0]?.[0])).searchParams;
+    const params = new URL(calledUrl(fetch.mock.calls[0])).searchParams;
     expect(params.get("isbnIssn")).toBe("9791090636071");
     expect(params.has("boolean")).toBe(false);
   });
@@ -164,7 +164,7 @@ describe("bn provider", () => {
 
     await create("bn").search!("placeholder", { limit: 3 });
 
-    const url = String(fetch.mock.calls[0]?.[0]);
+    const url = calledUrl(fetch.mock.calls[0]);
     expect(url).toContain("title=placeholder");
     // Three wanted plus the margin that covers withdrawn records filtered out locally.
     expect(url).toContain("limit=8");
@@ -177,8 +177,8 @@ describe("bn provider", () => {
     // fewer records than asked for - and a single-record lookup that lands on a withdrawn entry
     // reports "not found" for a book the catalog holds.
     const withdrawn = { ...RECORD, id: 1, deleted: true };
-    const fetch = vi.fn(async (input: RequestInfo | URL) => {
-      const limit = Number(new URL(String(input)).searchParams.get("limit") ?? 10);
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const limit = Number(new URL(calledUrl([input])).searchParams.get("limit") ?? 10);
       const bibs = [withdrawn, { ...RECORD, id: 2 }, { ...RECORD, id: 3 }].slice(0, limit);
       return new Response(JSON.stringify({ bibs }), {
         status: 200,
@@ -223,8 +223,8 @@ describe("bn provider", () => {
 
     const matches = await create("bn").search!("Placeholder");
 
-    expect(String(fetch.mock.calls[0]?.[0])).toContain("title=Placeholder");
-    expect(String(fetch.mock.calls[1]?.[0])).toContain("author=Placeholder");
+    expect(calledUrl(fetch.mock.calls[0])).toContain("title=Placeholder");
+    expect(calledUrl(fetch.mock.calls[1])).toContain("author=Placeholder");
     expect(matches[0]?.title).toBe("Placeholder Powieść");
   });
 

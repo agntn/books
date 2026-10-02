@@ -3,7 +3,7 @@ import type {
   ExtensionContext,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Value } from "typebox/value";
 
 /** The Pi TUI is served by the harness at runtime; the tests only need a Text that captures. */
@@ -23,7 +23,7 @@ import {
 import { MAX_TEXT_BYTES } from "../../src/core/types.ts";
 import booksExtension from "../../packages/pi/extensions/books.ts";
 
-/** SAFETY: the extension only calls registerTool during registration; the fake implements that seam. */
+/* SAFETY: the extension only calls registerTool during registration; the fake implements that seam. */
 async function registerExtensionTools(): Promise<Map<string, ToolDefinition>> {
   const tools = new Map<string, ToolDefinition>();
   const api = {
@@ -48,8 +48,8 @@ const ROUTES = {
   "84.txt.utf-8": { body: "", bytes: FAKE_TEXT_BYTES },
 };
 
-/** Text of a tool result, which is what the model actually reads. */
-function resultText(result: { content: { text?: string }[] }): string {
+/* Text of a tool result, which is what the model actually reads. */
+function resultText(result: Readonly<{ content: readonly Readonly<{ text?: string }>[] }>): string {
   return result.content.map((part) => part.text ?? "").join("");
 }
 

@@ -50,14 +50,39 @@ interface Reply {
 
 type Attempt = { reply: Reply } | { error: unknown; retry: boolean };
 
-/** GET with the shared headers and the one retry; failures leave here normalized. */
-async function get(
-  url: string,
-  request: { accept: string; range?: string; format: BodyFormat },
-  options?: ClientOptions,
-): Promise<Reply> {
+/** What `get` asks for: the media type, an optional byte range, and how to read the body. */
+interface Request {
+  readonly accept: string;
+  readonly range?: string;
+  readonly format: BodyFormat;
+}
+
+/**
+ * The shared headers for one request.
+ *
+ * @param {Request} request What the request asks for.
+ * @returns {Record<string, string>} `Accept`, `User-Agent` and, for a slice, `Range`.
+ */
+function requestHeaders(request: Request): Record<string, string> {
   const headers: Record<string, string> = { Accept: request.accept, "User-Agent": USER_AGENT };
   if (request.range) headers.Range = request.range;
+  return headers;
+}
+
+/**
+ * GET with the shared headers and the one retry; failures leave here normalized.
+ *
+ * @param {string} url Request URL.
+ * @param {Request} request What the request asks for.
+ * @param {Readonly<ClientOptions>} [options] Timeout and the provider to attribute errors to.
+ * @returns {Promise<Reply>} The response that wasn't an error.
+ */
+async function get(
+  url: string,
+  request: Request,
+  options?: Readonly<ClientOptions>,
+): Promise<Reply> {
+  const headers = requestHeaders(request);
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
   try {
     for (let retries = RETRIES; ; retries -= 1) {
@@ -70,10 +95,18 @@ async function get(
   }
 }
 
-/** One request under its own deadline, so the repeat after a timeout gets a full one. */
+/**
+ * One request under its own deadline, so the repeat after a timeout gets a full one.
+ *
+ * @param {string} url Request URL.
+ * @param {Readonly<Record<string, string>>} headers Request headers.
+ * @param {BodyFormat} format How to read the body.
+ * @param {number} timeout Deadline in milliseconds; 0 waits indefinitely.
+ * @returns {Promise<Attempt>} The reply, or the error with whether it's worth a retry.
+ */
 async function attempt(
   url: string,
-  headers: Record<string, string>,
+  headers: Readonly<Record<string, string>>,
   format: BodyFormat,
   timeout: number,
 ): Promise<Attempt> {
@@ -98,7 +131,13 @@ async function attempt(
   return { reply: { status: response.status, headers: response.headers, data } };
 }
 
-/** Read a response body in the requested format; a bodiless status reads as nothing. */
+/**
+ * Read a response body in the requested format; a bodiless status reads as nothing.
+ *
+ * @param {Response} response The response to read.
+ * @param {BodyFormat} format How to read the body.
+ * @returns {Promise<unknown>} Parsed JSON, text, an `ArrayBuffer`, or `undefined`.
+ */
 async function readBody(response: Response, format: BodyFormat): Promise<unknown> {
   if (!response.body || EMPTY_STATUS_CODES.has(response.status)) return undefined;
   if (format === "bytes") return response.arrayBuffer();
@@ -106,7 +145,12 @@ async function readBody(response: Response, format: BodyFormat): Promise<unknown
   return format === "json" ? parseJSON(text) : text;
 }
 
-/** JSON when the text parses, the text itself otherwise, without keys that reach a prototype. */
+/**
+ * JSON when the text parses, the text itself otherwise, without keys that reach a prototype.
+ *
+ * @param {string} text Response body.
+ * @returns {unknown} The parsed value, or the text when it doesn't parse.
+ */
 function parseJSON(text: string): unknown {
   try {
     return JSON.parse(text, (key, value: unknown) =>
@@ -124,14 +168,24 @@ function parseJSON(text: string): unknown {
  * Fetch JSON with Books headers and a 15-second default timeout.
  *
  * Transport failures are normalized before they leave this boundary.
+ *
+ * @param {string} url Request URL.
+ * @param {Readonly<ClientOptions>} [options] Timeout and the provider to attribute errors to.
+ * @returns {Promise<T>} The parsed body.
  */
-export async function getJSON<T>(url: string, options?: ClientOptions): Promise<T> {
+export async function getJSON<T>(url: string, options?: Readonly<ClientOptions>): Promise<T> {
   const reply = await get(url, { accept: "application/json", format: "json" }, options);
   return reply.data as T;
 }
 
-/** Fetch an HTML page as text, even when the server labels it JSON. */
-export async function getText(url: string, options?: ClientOptions): Promise<string> {
+/**
+ * Fetch an HTML page as text, even when the server labels it JSON.
+ *
+ * @param {string} url Request URL.
+ * @param {Readonly<ClientOptions>} [options] Timeout and the provider to attribute errors to.
+ * @returns {Promise<string>} The body, or an empty string when there's none.
+ */
+export async function getText(url: string, options?: Readonly<ClientOptions>): Promise<string> {
   const reply = await get(
     url,
     { accept: "text/html,application/xhtml+xml", format: "text" },
@@ -156,7 +210,12 @@ export interface TextSlice {
   nextOffset?: number;
 }
 
-/** Read `bytes 0-100/448885` off a `Content-Range` header. */
+/**
+ * Read `bytes 0-100/448885` off a `Content-Range` header.
+ *
+ * @param {string | null} contentRange The header, when the server sent one.
+ * @returns {number | undefined} The size of the whole file, when the header names it.
+ */
 function parseTotalBytes(contentRange: string | null): number | undefined {
   const total = Number(contentRange?.match(/\/(\d+)\s*$/)?.[1]);
   return Number.isFinite(total) ? total : undefined;
@@ -172,11 +231,16 @@ function parseTotalBytes(contentRange: string | null): number | undefined {
  *
  * The decoded text is trimmed to whole UTF-8 characters: a byte range cuts wherever it lands,
  * and half of `ł` is not a character.
+ *
+ * @param {string} url URL of the text file.
+ * @param {Readonly<{ offset: number; maxBytes: number }>} range Start offset and byte budget.
+ * @param {Readonly<ClientOptions>} [options] Timeout and the provider to attribute errors to.
+ * @returns {Promise<TextSlice>} The decoded slice and the offset to read on from.
  */
 export async function readTextSlice(
   url: string,
-  range: { offset: number; maxBytes: number },
-  options?: ClientOptions,
+  range: Readonly<{ offset: number; maxBytes: number }>,
+  options?: Readonly<ClientOptions>,
 ): Promise<TextSlice> {
   const { offset, maxBytes } = range;
   const response = await get(
@@ -219,8 +283,11 @@ export async function readTextSlice(
  *   ```ts
  *   buildQuery({ q: "dune", limit: undefined }); // '?q=dune'
  *   ```
+ *
+ * @param {Readonly<Record<string, string | number | undefined>>} params Query parameters.
+ * @returns {string} The query string with its `?`, or an empty string.
  */
-export function buildQuery(params: Record<string, string | number | undefined>): string {
+export function buildQuery(params: Readonly<Record<string, string | number | undefined>>): string {
   const usp = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) usp.set(key, String(value));

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { InvalidInputError } from "../../src/core/errors.ts";
 import { Provider, assertBookQuery, assertHttpUrl } from "../../src/core/provider.ts";
 import type { ProviderCapabilities } from "../../src/core/types.ts";

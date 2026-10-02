@@ -13,6 +13,9 @@ export { isConfigured } from "./registry.ts";
  * Empty and whitespace-only strings mean "no preference". Every surface asks this question, and
  * each one that answered it inline drifted: a truthiness check treats `"  "` as a named provider
  * and skips the fallback walk the caller expected.
+ *
+ * @param {string} [value] The provider argument as the caller passed it.
+ * @returns {string | undefined} The trimmed name, or `undefined` for no preference.
  */
 export function providerArg(value?: string): string | undefined {
   return value?.trim() || undefined;
@@ -25,6 +28,9 @@ export function providerArg(value?: string): string | undefined {
  * The four operations are one question and the two result kinds are another, but callers need
  * both from one list: an ISBN lookup that walks a catalog which cannot search by ISBN wastes a
  * request and reports "not found" for a book the next provider has.
+ *
+ * @param {keyof ProviderCapabilities} capability The operation or result kind.
+ * @returns {string[]} Registry keys of the providers that serve it.
  */
 export function usableProviders(capability: keyof ProviderCapabilities): string[] {
   return providers().filter(
@@ -35,6 +41,9 @@ export function usableProviders(capability: keyof ProviderCapabilities): string[
 /**
  * Check for the reserved "all" provider value, which fans a request out to every registered
  * provider instead of selecting one. Surfaces test this before calling `selectProvider`.
+ *
+ * @param {string} [preferred] The provider argument.
+ * @returns {boolean} Whether it asks for every provider.
  */
 export function isAllProviders(preferred?: string): boolean {
   return preferred?.trim().toLowerCase() === "all";
@@ -51,6 +60,9 @@ export function isAllProviders(preferred?: string): boolean {
  * and registration order decides among them: the broadest catalog first, the two public-domain
  * libraries next, the regional catalogs last.
  *
+ * @param {string} [preferred] Provider the caller named, already normalized.
+ * @param {ProviderOperation} [operation] The operation the provider must serve.
+ * @returns {string} Registry key of the chosen provider.
  * @throws {UnknownProviderError} When an explicit preference is not registered.
  */
 export function resolveProvider(preferred?: string, operation: ProviderOperation = "book"): string {
@@ -84,6 +96,10 @@ export interface SelectedProvider {
  * This is the single selection path shared by the CLI, MCP server, AI tools, and both agent
  * extensions. Empty or whitespace-only arguments count as absent, so a client that sends `""`
  * gets the same behavior as one that omits the field.
+ *
+ * @param {string} [preferred] Provider the caller named.
+ * @param {ProviderOperation} [operation] The operation the provider must serve.
+ * @returns {SelectedProvider} The provider and its registry key.
  */
 export function selectProvider(
   preferred?: string,
@@ -93,7 +109,14 @@ export function selectProvider(
   return { name, provider: create(name) };
 }
 
-/** `selectProvider` for an operation without a fan-out, refusing the reserved "all" by name. */
+/**
+ * `selectProvider` for an operation without a fan-out, refusing the reserved "all" by name.
+ *
+ * @param {string | undefined} preferred Provider the caller named.
+ * @param {ProviderOperation} operation The operation the provider must serve.
+ * @returns {SelectedProvider} The provider and its registry key.
+ * @throws {InvalidInputError} When `preferred` is "all".
+ */
 export function selectOneProvider(
   preferred: string | undefined,
   operation: ProviderOperation,

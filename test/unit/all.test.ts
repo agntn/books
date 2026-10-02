@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   bookAll,
   bookWithFallback,
@@ -34,7 +34,7 @@ function record(provider: string, title: string): Book {
   return { provider, title, authors: [], languages: [], subjects: [] };
 }
 
-/** A stand-in whose every operation fails the way the test needs. */
+/* A stand-in whose every operation fails the way the test needs. */
 function failing(key: string, error: () => Error, capabilities?: Partial<ProviderCapabilities>) {
   return class Failing extends Provider {
     static readonly key: string = key;
@@ -57,7 +57,7 @@ function failing(key: string, error: () => Error, capabilities?: Partial<Provide
   } as unknown as ProviderConstructor;
 }
 
-/** A stand-in that always answers. */
+/* A stand-in that always answers. */
 function working(key: string) {
   return class Working extends Provider {
     static readonly key: string = key;
@@ -210,7 +210,7 @@ describe("bookWithFallback", () => {
 describe("textWithFallback", () => {
   it("walks only the libraries that carry texts", async () => {
     const result = await textWithFallback({ title: "x" }, undefined, []).catch(
-      (error: Error) => error,
+      (error: unknown) => error,
     );
     expect(result).toBeInstanceOf(NotFoundError);
 

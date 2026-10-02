@@ -1,15 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { InvalidInputError, NotFoundError } from "../../src/core/errors.ts";
 import { followText } from "../../src/core/follow.ts";
 import { formatTextFollow } from "../../src/core/format.ts";
 import { create } from "../../src/core/registry.ts";
-import { stubRoutes } from "../helpers.ts";
+import { calledUrl, stubRoutes } from "../helpers.ts";
 import "../../src/providers/openlibrary.ts";
 
 const BOOK = "placeholderscan0000keep";
 
-/** One page of `/search/inside.json` holding `id` with these passages. */
-function hits(id: string, ...snippets: string[]) {
+/* One page of `/search/inside.json` holding `id` with these passages. */
+function hits(id: string, ...snippets: readonly string[]) {
   return {
     body: {
       hits: {
@@ -29,14 +29,14 @@ function hits(id: string, ...snippets: string[]) {
   };
 }
 
-/** The route of one step, told apart by its phrase. */
+/* The route of one step, told apart by its phrase. */
 function step(phrase: string): string {
   return `q=${phrase.replaceAll(" ", "+")}&page`;
 }
 
-/** Queries the stubbed endpoint was asked, in order. */
-function queries(fetch: ReturnType<typeof stubRoutes>): string[] {
-  return fetch.mock.calls.map(([url]) => new URL(String(url)).searchParams.get("q") ?? "");
+/* Queries the stubbed endpoint was asked, in order. */
+function queries(calls: readonly (readonly unknown[])[]): string[] {
+  return calls.map((call) => new URL(calledUrl(call)).searchParams.get("q") ?? "");
 }
 
 afterEach(() => {
@@ -66,8 +66,12 @@ describe("followText", () => {
       anchorWords: 3,
     });
 
-    expect(queries(fetch)).toEqual(["counted seven gulls", "the rail before", "fog rolled over"]);
-    expect(fetch.mock.calls.every(([url]) => String(url).includes("limit=100"))).toBe(true);
+    expect(queries(fetch.mock.calls)).toEqual([
+      "counted seven gulls",
+      "the rail before",
+      "fog rolled over",
+    ]);
+    expect(fetch.mock.calls.every((call) => calledUrl(call).includes("limit=100"))).toBe(true);
     expect(read).toMatchObject({
       provider: "openlibrary",
       book: BOOK,
@@ -112,7 +116,7 @@ describe("followText", () => {
       anchorWords: 4,
     });
 
-    expect(String(fetch.mock.calls[1]?.[0])).toContain("q=gulls+on+the+rail&");
+    expect(calledUrl(fetch.mock.calls[1])).toContain("q=gulls+on+the+rail&");
     expect(read.passage).toBe("keeper counted seven gulls on the rail - and the fog");
   });
 
@@ -169,7 +173,7 @@ describe("followText", () => {
       anchorWords: 3,
     });
 
-    expect(queries(fetch)).toEqual(["harbour wall and", "fog rolled over"]);
+    expect(queries(fetch.mock.calls)).toEqual(["harbour wall and", "fog rolled over"]);
     expect(read.passage).toBe(
       "on the rail before the fog rolled over the harbour wall and swallowed the last",
     );
@@ -338,7 +342,7 @@ describe("followText", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(String(fetch.mock.calls[0]?.[0])).toContain("page=1&limit=100");
+    expect(calledUrl(fetch.mock.calls[0])).toContain("page=1&limit=100");
   });
 
   it("splits a passage full of unclosed markers in linear time", async () => {

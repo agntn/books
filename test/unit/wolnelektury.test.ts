@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { InvalidInputError, NotFoundError } from "../../src/core/errors.ts";
 import { create } from "../../src/core/registry.ts";
 import { FAKE_TEXT_BYTES, WOLNELEKTURY_BOOK, stubRoutes } from "../helpers.ts";

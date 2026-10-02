@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { renderToolResult } from "../../packages/shared/tui.ts";
 
-const ESC = String.fromCharCode(27);
-const NUL = String.fromCharCode(0);
-const BEL = String.fromCharCode(7);
+const ESC = String.fromCodePoint(27);
+const NUL = String.fromCodePoint(0);
+const BEL = String.fromCodePoint(7);
 
 /** `fg` is optional on the theme, so a bare object has to render too. */
 const plain = {};
@@ -11,11 +11,11 @@ const plain = {};
 /** Mark the colour a line was painted with, so the tests can read it back. */
 const tagged = { fg: (color: string, text: string) => `<${color}>${text}` };
 
-function textResult(...lines: string[]) {
+function textResult(...lines: readonly string[]) {
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
-/** The shape of a text slice: a header, a byte range, a blank line, then pages of prose. */
+/* The shape of a text slice: a header, a byte range, a blank line, then pages of prose. */
 function sliceResult(paragraphs: number, width: number) {
   const prose = Array.from(
     { length: paragraphs },
@@ -72,7 +72,7 @@ describe("expanded results", () => {
 
     expect(lines).toHaveLength(23);
     expect(lines[4]).toHaveLength(502);
-    expect(lines[lines.length - 1]).not.toContain("more lines");
+    expect(lines.at(-1)).not.toContain("more lines");
   });
 
   it("keeps a paragraph longer than the collapsed scan width", () => {

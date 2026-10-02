@@ -40,45 +40,62 @@ const RESULT_AUTHOR_SELECTOR = 'h3 a[href^="/katalog/autor/"]';
 const BOOK_SLUG = /^[a-z0-9-]+$/;
 
 interface WolneLekturyName {
-  name?: string;
-  slug?: string;
+  readonly name?: string;
+  readonly slug?: string;
 }
 
 interface WolneLekturyBook {
-  title?: string;
-  url?: string;
-  language?: string;
-  authors?: WolneLekturyName[];
-  translators?: WolneLekturyName[];
-  epochs?: WolneLekturyName[];
-  genres?: WolneLekturyName[];
-  kinds?: WolneLekturyName[];
-  cover?: string;
-  simple_cover?: string;
-  txt?: string;
-  pdf?: string;
-  epub?: string;
-  mobi?: string;
-  fb2?: string;
-  html?: string;
-  isbn_pdf?: string;
-  isbn_epub?: string;
-  isbn_mobi?: string;
-  children?: { slug?: string; title?: string }[];
-  parent?: { slug?: string } | null;
+  readonly title?: string;
+  readonly url?: string;
+  readonly language?: string;
+  readonly authors?: readonly WolneLekturyName[];
+  readonly translators?: readonly WolneLekturyName[];
+  readonly epochs?: readonly WolneLekturyName[];
+  readonly genres?: readonly WolneLekturyName[];
+  readonly kinds?: readonly WolneLekturyName[];
+  readonly cover?: string;
+  readonly simple_cover?: string;
+  readonly txt?: string;
+  readonly pdf?: string;
+  readonly epub?: string;
+  readonly mobi?: string;
+  readonly fb2?: string;
+  readonly html?: string;
+  readonly isbn_pdf?: string;
+  readonly isbn_epub?: string;
+  readonly isbn_mobi?: string;
+  readonly children?: readonly Readonly<{ slug?: string; title?: string }>[];
+  readonly parent?: Readonly<{ slug?: string }> | null;
 }
 
-/** Slug out of `/katalog/lektura/lalka/`. */
+/**
+ * Slug out of `/katalog/lektura/lalka/`.
+ *
+ * @param {string | undefined} href A catalog link.
+ * @returns {string | undefined} Its last path segment.
+ */
 function slugFromHref(href: string | undefined): string | undefined {
   return href?.split("/").filter(Boolean).pop();
 }
 
-function names(values: WolneLekturyName[] | undefined): string[] {
+/**
+ * Names of the people or categories a record lists.
+ *
+ * @param {readonly WolneLekturyName[] | undefined} values Named entries from the API.
+ * @returns {string[]} The distinct names.
+ */
+function names(values: readonly WolneLekturyName[] | undefined): string[] {
   return uniqueStrings((values ?? []).map((value) => value.name));
 }
 
+/**
+ * The files the library serves for a book.
+ *
+ * @param {WolneLekturyBook} book The API record.
+ * @returns {BookFormat[]} One entry per file the record links.
+ */
 function toFormats(book: WolneLekturyBook): BookFormat[] {
-  const files: [string, string | undefined][] = [
+  const files: (readonly [string, string | undefined])[] = [
     ["text/plain; charset=utf-8", book.txt],
     ["application/epub+zip", book.epub],
     ["application/pdf", book.pdf],
@@ -87,7 +104,7 @@ function toFormats(book: WolneLekturyBook): BookFormat[] {
     ["text/html", book.html],
   ];
   return files
-    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
     .map(([type, url]) => ({ type, url }));
 }
 
@@ -121,7 +138,7 @@ class WolneLektury extends Provider {
     for (const card of page.querySelectorAll(RESULT_SELECTOR)) {
       const link = card.querySelector(RESULT_TITLE_SELECTOR);
       const slug = slugFromHref(link?.getAttribute("href"));
-      const title = link?.text.replace(/\s+/g, " ").trim();
+      const title = link?.text.replaceAll(/\s+/g, " ").trim();
       if (!slug || !title) continue;
       matches.push({
         title,
@@ -140,6 +157,9 @@ class WolneLektury extends Provider {
    *
    * The digital editions carry their own ISBNs, one per file format. The EPUB is the one a
    * reader is most likely to be holding, so that is the one the record reports.
+   *
+   * @param {BookQuery} query The book to look up.
+   * @returns {Promise<Book>} The record.
    */
   async book(query: BookQuery): Promise<Book> {
     const { slug, book } = await this.locate(assertBookQuery(query, WolneLektury.key));
@@ -165,6 +185,11 @@ class WolneLektury extends Provider {
    *
    * A multi-volume work is a shell: the text lives in the volumes, which are records of their
    * own. Naming them beats "not found" for a book the library plainly has.
+   *
+   * @param {BookQuery} query The book to read.
+   * @param {TextOptions} [options] Offset and byte count.
+   * @returns {Promise<BookText>} The slice.
+   * @throws {NotFoundError} When the record has no plain text, naming its volumes if it has them.
    */
   override async text(query: BookQuery, options?: TextOptions): Promise<BookText> {
     const { slug, book } = await this.locate(assertBookQuery(query, WolneLektury.key));
@@ -189,7 +214,13 @@ class WolneLektury extends Provider {
     };
   }
 
-  /** Resolve a query to one catalog record, keeping the slug it was found under. */
+  /**
+   * Resolve a query to one catalog record, keeping the slug it was found under.
+   *
+   * @param {BookQuery} query A checked book query.
+   * @returns {Promise<{ slug: string; book: WolneLekturyBook }>} The slug and the record.
+   * @throws {InvalidInputError} When the id isn't a catalog slug.
+   */
   private async locate(query: BookQuery): Promise<{ slug: string; book: WolneLekturyBook }> {
     const slug = query.id?.trim() ?? (await this.searchSlug(query));
     if (!BOOK_SLUG.test(slug)) {
@@ -204,7 +235,14 @@ class WolneLektury extends Provider {
     };
   }
 
-  /** First search hit for a title query, since the API itself cannot search. */
+  /**
+   * First search hit for a title query, since the API itself cannot search.
+   *
+   * @param {BookQuery} query A checked book query.
+   * @returns {Promise<string>} The slug of the first hit.
+   * @throws {UnsupportedOperationError} When the query carries only an ISBN.
+   * @throws {NotFoundError} When the search finds nothing.
+   */
   private async searchSlug(query: BookQuery): Promise<string> {
     if (!query.title) {
       throw new UnsupportedOperationError("isbn", WolneLektury.key);

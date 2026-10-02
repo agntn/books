@@ -1,18 +1,18 @@
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
 
 /** One stubbed response: a JSON body, an HTML page, or raw bytes. */
 export interface StubRoute {
-  body: unknown;
-  status?: number;
-  html?: boolean;
+  readonly body: unknown;
+  readonly status?: number;
+  readonly html?: boolean;
   /** Raw bytes, for the range requests the full-text providers make */
-  bytes?: Uint8Array;
-  headers?: Record<string, string>;
+  readonly bytes?: Uint8Array;
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
-/** Stub global fetch with a per-URL body map; unmatched URLs answer 404. */
-export function stubRoutes(routes: Record<string, StubRoute>) {
-  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+/* Stub global fetch with a per-URL body map; unmatched URLs answer 404. */
+export function stubRoutes(routes: Readonly<Record<string, StubRoute>>) {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const match = Object.entries(routes).find(([pattern]) => url.includes(pattern));
     if (!match) {
@@ -24,7 +24,7 @@ export function stubRoutes(routes: Record<string, StubRoute>) {
 
     const [, route] = match;
     if (route.bytes) {
-      return rangeResponse(route.bytes, init, route.headers);
+      return rangeResponse(route.bytes, new Headers(init?.headers).get("range"), route.headers);
     }
     return new Response(route.html ? String(route.body) : JSON.stringify(route.body), {
       status: route.status ?? 200,
@@ -38,14 +38,13 @@ export function stubRoutes(routes: Record<string, StubRoute>) {
   return fetch;
 }
 
-/** Serve a byte range the way a static file server does, honouring the `Range` header. */
+/* Serve a byte range the way a static file server does, honouring the `Range` header. */
 function rangeResponse(
   bytes: Uint8Array,
-  init?: RequestInit,
-  headers?: Record<string, string>,
+  range: string | null,
+  headers?: Readonly<Record<string, string>>,
 ): Response {
-  const header = new Headers(init?.headers).get("range");
-  const match = header?.match(/bytes=(\d+)-(\d+)/);
+  const match = range?.match(/bytes=(\d+)-(\d+)/);
   if (!match) {
     return new Response(bytes as BodyInit, { status: 200, headers });
   }
@@ -60,18 +59,25 @@ function rangeResponse(
   });
 }
 
-/** Stub global fetch with one JSON body; returns the mock for call inspection. */
+/* Stub global fetch with one JSON body; returns the mock for call inspection. */
 export function stubJSON(body: unknown, status = 200) {
   return stubRoutes({ "": { body, status } });
 }
 
-/** Stub global fetch with one HTML body; returns the mock for call inspection. */
+/* Stub global fetch with one HTML body; returns the mock for call inspection. */
 export function stubHTML(body: string, status = 200) {
   return stubRoutes({ "": { body, status, html: true } });
 }
 
-/** Look up a registered extension tool, failing loudly when registration missed it. */
-export function requireTool<T>(tools: Map<string, T>, name: string): T {
+/* URL of one stubbed fetch call, whichever form the client passed it in. */
+export function calledUrl(call: readonly unknown[] | undefined): string {
+  const input = call?.[0];
+  if (input instanceof Request) return input.url;
+  return input instanceof URL ? input.href : String(input);
+}
+
+/* Look up a registered extension tool, failing loudly when registration missed it. */
+export function requireTool<T>(tools: ReadonlyMap<string, T>, name: string): T {
   const tool = tools.get(name);
   if (!tool) throw new Error(`Tool not registered: ${name}`);
   return tool;
