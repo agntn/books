@@ -71,6 +71,7 @@ export default async function booksExtension(pi: ExtensionAPI): Promise<void> {
     books_get: { describeCall: describeQuery, renderResult: resultLine },
     books_text: { describeCall: describeQuery, renderResult: resultLine },
     books_text_search: { describeCall: describeQuery, renderResult: resultLine },
+    books_text_follow: { describeCall: describeQuery, renderResult: resultLine },
   };
 
   pi.setLabel("Books");

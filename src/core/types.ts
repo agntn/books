@@ -197,6 +197,56 @@ export interface TextSearchOptions {
   maxPages?: number;
 }
 
+/** Which way `followText()` reads from its phrase. */
+export type TextDirection = "forward" | "backward";
+
+/** Options for `followText()`. */
+export interface TextFollowOptions {
+  /** Scan identifier from a text search match; the chain reads this book only */
+  book: string;
+  /** Read on past the phrase, or back before it; defaults to forward */
+  direction?: TextDirection;
+  /** Searches to run, the first one included; clamped to `MAX_FOLLOW_STEPS` */
+  steps?: number;
+  /** Words of the passage each next search starts from, clamped to 3 to 12 */
+  anchorWords?: number;
+  /** Pages of hits each search reads looking for the book; clamped to `MAX_TEXT_SEARCH_PAGES` */
+  maxPages?: number;
+}
+
+/** Why `followText()` stopped reading. */
+export type TextFollowStop = "steps" | "lost" | "end" | "repeat" | "error";
+
+/** A passage read from one scan by chaining phrase searches. */
+export interface TextFollowResult {
+  /** Registry key of the provider that ran the searches */
+  provider: string;
+  /** The scan that was read */
+  book: string;
+  /** Title as the scan's metadata spells it */
+  title?: string;
+  /** Authors as the scan's metadata spells them */
+  authors: string[];
+  /** The phrase the chain started from */
+  query: string;
+  /** Which way the chain read */
+  direction: TextDirection;
+  /** The stitched passage in reading order, without match markers or OCR line breaks */
+  passage: string;
+  /** Searches that ran, the first one included */
+  searches: number;
+  /** Why it stopped: step budget, book lost, no new words, a loop, or a failed search */
+  stop: TextFollowStop;
+  /** The failed request's message when `stop` is `"error"` */
+  error?: string;
+  /** The next query, with the same book and direction, to read on from where this stopped */
+  anchor: string;
+  /** The scan in its reader, opened on the first search */
+  url: string;
+  /** Attribution line the provider asks callers to show */
+  attribution?: string;
+}
+
 /** Feature flags for what a provider can actually serve at runtime. */
 export interface ProviderCapabilities {
   /** Can list books matching a free-form query */
@@ -246,6 +296,15 @@ export const MAX_TEXT_BYTES = 262_144;
 
 /** Pages one `searchText()` call reads for a book; one can take ten seconds on Open Library. */
 export const MAX_TEXT_SEARCH_PAGES = 10;
+
+/** Searches one `followText()` call runs; an uncached one took 30 seconds on Open Library. */
+export const DEFAULT_FOLLOW_STEPS = 3;
+export const MAX_FOLLOW_STEPS = 10;
+
+/** Anchor length: seven words put a test scan on the first page of 100 hits, three did not. */
+export const DEFAULT_ANCHOR_WORDS = 7;
+export const MIN_ANCHOR_WORDS = 3;
+export const MAX_ANCHOR_WORDS = 12;
 
 /**
  * Round a requested result limit and keep it inside the provider's range.

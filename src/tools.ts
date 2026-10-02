@@ -10,7 +10,15 @@
 
 import { defineTool, Type, type ToolDefinition } from "@agntn/tools";
 
-import { MAX_TEXT_BYTES, MAX_TEXT_SEARCH_PAGES } from "./core/types.ts";
+import {
+  DEFAULT_ANCHOR_WORDS,
+  DEFAULT_FOLLOW_STEPS,
+  MAX_ANCHOR_WORDS,
+  MAX_FOLLOW_STEPS,
+  MAX_TEXT_BYTES,
+  MAX_TEXT_SEARCH_PAGES,
+  MIN_ANCHOR_WORDS,
+} from "./core/types.ts";
 
 let operations: Promise<typeof import("./tool-operations.ts")> | undefined;
 
@@ -183,7 +191,7 @@ export const textSearchTool = defineTool({
   guidelines: [
     "books_text_search matches its query as a phrase: every word has to stand next to the others in the scan. Search for a few distinctive words, not a sentence.",
     "Pass the id of a books_text_search match as book to keep only that scan's passages. The search ranks the whole corpus, so a common phrase can bury the book past maxPages, while a rarer phrase from the same book finds it on the first page.",
-    "A books_text_search passage is about a dozen words of OCR text. To read on, search again from the last words of the previous passage, with the same book.",
+    "A books_text_search passage is about a dozen words of OCR text. To read on through the same scan, call books_text_follow with the phrase and the scan id.",
   ],
   effect: "read",
   openWorld: true,
@@ -234,6 +242,73 @@ export const textSearchTool = defineTool({
   execute: async (params) => (await loadOperations()).booksTextSearch(params),
 });
 
+export const textFollowTool = defineTool({
+  name: "books_text_follow",
+  title: "Books Text Follow",
+  description: `Read on through one scanned book from a phrase. Each search starts from the last words read so far (the first ones with backward) and adds the next few. Only Open Library serves it. A search can take half a minute, so one call runs ${DEFAULT_FOLLOW_STEPS} searches unless steps says more. The result ends with the query that reads on from where it stopped.`,
+  snippet:
+    "Use books_text_follow to read a paragraph of a scanned book that books_text cannot read.",
+  guidelines: [
+    "books_text_follow needs a scan id from books_text_search as book, and a phrase that search found in it as query.",
+    "To read further than one books_text_follow call, call it again with the query its result ends with, the same book and the same backward value.",
+    "When books_text_follow loses the book or the passage drifts into a caption or a quotation many books share, restart it from a distinctive phrase of the main text further along, or read backward from a later sentence to recover the skipped part.",
+  ],
+  effect: "read",
+  openWorld: true,
+  input: Type.Object(
+    {
+      query: Type.String({
+        minLength: 1,
+        maxLength: 500,
+        pattern: "\\S",
+        description:
+          "Phrase found in the book to start from, or the query a previous result ends with",
+      }),
+      book: Type.String({
+        minLength: 1,
+        maxLength: 200,
+        pattern: "\\S",
+        description: "Scan id from a books_text_search match; the chain reads only this book",
+      }),
+      backward: Type.Optional(
+        Type.Boolean({
+          description: "Read back before the phrase instead of on past it",
+        }),
+      ),
+      steps: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          maximum: MAX_FOLLOW_STEPS,
+          description: `Searches to run, the first one included; defaults to ${DEFAULT_FOLLOW_STEPS}. Each adds about five words and can take half a minute`,
+        }),
+      ),
+      anchorWords: Type.Optional(
+        Type.Integer({
+          minimum: MIN_ANCHOR_WORDS,
+          maximum: MAX_ANCHOR_WORDS,
+          description: `Words each next search starts from; defaults to ${DEFAULT_ANCHOR_WORDS}. Fewer words match more books and can bury this one`,
+        }),
+      ),
+      maxPages: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          maximum: MAX_TEXT_SEARCH_PAGES,
+          description: `Pages of 100 hits each search reads while looking for book, up to ${MAX_TEXT_SEARCH_PAGES}; defaults to 1`,
+        }),
+      ),
+      provider: Type.Optional(
+        Type.String({
+          maxLength: 64,
+          description:
+            "Registered provider key; use books_providers to list them. Empty or omitted: the first that searches inside scans",
+        }),
+      ),
+    },
+    { additionalProperties: false },
+  ),
+  execute: async (params) => (await loadOperations()).booksTextFollow(params),
+});
+
 /** The book tools, discovery first. */
 export const bookTools: readonly ToolDefinition[] = [
   providersTool,
@@ -241,4 +316,5 @@ export const bookTools: readonly ToolDefinition[] = [
   getTool,
   textTool,
   textSearchTool,
+  textFollowTool,
 ];

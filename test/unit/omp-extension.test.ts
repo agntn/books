@@ -120,6 +120,7 @@ describe("books OMP extension", () => {
       "books_get",
       "books_text",
       "books_text_search",
+      "books_text_follow",
     ]);
     expect([...tools.values()].every((tool) => tool.approval === "read")).toBe(true);
   });
