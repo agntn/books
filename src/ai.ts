@@ -10,11 +10,14 @@ import type {
   SearchParams,
   TextDetails,
   TextParams,
+  TextSearchDetails,
+  TextSearchParams,
 } from "./tool-operations.ts";
 import {
   getTool,
   providersTool as providersDefinition,
   searchTool as searchDefinition,
+  textSearchTool as textSearchDefinition,
   textTool as textDefinition,
 } from "./tools.ts";
 
@@ -23,6 +26,9 @@ export const searchTool: Tool<SearchParams, AiToolOutput<SearchDetails>> = toAiT
 );
 export const bookTool: Tool<BookParams, AiToolOutput<BookDetails>> = toAiTool(getTool);
 export const textTool: Tool<TextParams, AiToolOutput<TextDetails>> = toAiTool(textDefinition);
+export const textSearchTool: Tool<TextSearchParams, AiToolOutput<TextSearchDetails>> = toAiTool(
+  textSearchDefinition,
+);
 export const providersTool: Tool<object, AiToolOutput<ProvidersDetails>> = toAiTool(
   providersDefinition,
 );

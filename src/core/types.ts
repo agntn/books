@@ -149,6 +149,54 @@ export interface TextOptions {
   maxBytes?: number;
 }
 
+/** A scanned book holding passages that match a full-text search. */
+export interface TextMatch {
+  /** Identifier of the scan; pass it back as `TextSearchOptions.book` to search that book alone */
+  id: string;
+  /** Title as the scan's metadata spells it */
+  title?: string;
+  /** Authors as the scan's metadata spells them; empty when it lists none */
+  authors: string[];
+  /** Publication year from the scan's metadata */
+  year?: number;
+  /** Page of the scan the passages sit on, as the search index numbers it */
+  page?: number;
+  /** Short passages around the match, the matched words wrapped in `{{{` and `}}}` */
+  snippets: string[];
+  /** The scan in its reader, opened on this search */
+  url: string;
+}
+
+/** One page of a full-text search across scanned books. */
+export interface TextSearchResult {
+  /** Registry key of the provider that ran the search */
+  provider: string;
+  /** The query as it was sent */
+  query: string;
+  /** Matching scans across the whole corpus, not only on the pages read */
+  total: number;
+  /** Last page that was read */
+  page: number;
+  /** Matching scans, best match first; only the requested book when `book` was given */
+  matches: TextMatch[];
+  /** Page to pass as `page`, with the same `limit` and `book`, to read on; absent at the end */
+  nextPage?: number;
+  /** Attribution line the provider asks callers to show */
+  attribution?: string;
+}
+
+/** Options for `searchText()`. */
+export interface TextSearchOptions {
+  /** Page of hits to start at, from 1 */
+  page?: number;
+  /** Max matches on a page; providers clamp to their own maximum */
+  limit?: number;
+  /** Scan identifier from a previous match; only that book's passages are returned */
+  book?: string;
+  /** Pages to read while looking for `book`; clamped to `MAX_TEXT_SEARCH_PAGES` */
+  maxPages?: number;
+}
+
 /** Feature flags for what a provider can actually serve at runtime. */
 export interface ProviderCapabilities {
   /** Can list books matching a free-form query */
@@ -157,6 +205,8 @@ export interface ProviderCapabilities {
   book: boolean;
   /** Can return the full text of a public-domain book */
   text: boolean;
+  /** Can find a phrase inside scans; optional, so a provider registered elsewhere compiles */
+  searchText?: boolean;
   /** Can find a book from an ISBN */
   isbn: boolean;
   /** Carries reader scores on its records */
@@ -193,6 +243,9 @@ export const DEFAULT_TEXT_BYTES = 32_768;
 
 /** Hard ceiling on one `text()` slice: a whole novel does not belong in one tool result. */
 export const MAX_TEXT_BYTES = 262_144;
+
+/** Pages one `searchText()` call reads for a book; one can take ten seconds on Open Library. */
+export const MAX_TEXT_SEARCH_PAGES = 10;
 
 /**
  * Round a requested result limit and keep it inside the provider's range.

@@ -70,12 +70,41 @@ describe("Books MCP server", () => {
       "books_search",
       "books_get",
       "books_text",
+      "books_text_search",
     ]);
     expect(listed.tools.every((tool) => tool.annotations?.readOnlyHint)).toBe(true);
 
     const response = await client.callTool({ name: "books_providers", arguments: {} });
     expect(response.isError).not.toBe(true);
     expect(resultText(response)).toContain("openlibrary");
+  });
+
+  it("finds a phrase inside scans without a provider argument", async () => {
+    stubRoutes({
+      "/search/inside.json": {
+        body: {
+          hits: {
+            total: 1,
+            hits: [
+              {
+                fields: { identifier: ["placeholderscan"], meta_title: ["Placeholder Scan"] },
+                highlight: { text: ["before {{{made-up phrase}}} after"] },
+              },
+            ],
+          },
+        },
+      },
+    });
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "books_text_search",
+      arguments: { query: "made-up phrase", book: "", provider: "" },
+    });
+
+    expect(response.isError).not.toBe(true);
+    expect(resultText(response)).toContain("> before {{{made-up phrase}}} after");
+    expect(resultText(response)).toContain("id=placeholderscan");
   });
 
   it("searches through the selected provider", async () => {

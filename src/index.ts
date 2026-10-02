@@ -12,11 +12,15 @@ export type {
   ProviderConfig,
   Rating,
   SearchOptions,
+  TextMatch,
   TextOptions,
+  TextSearchOptions,
+  TextSearchResult,
 } from "./core/types.ts";
 export {
   DEFAULT_TEXT_BYTES,
   MAX_TEXT_BYTES,
+  MAX_TEXT_SEARCH_PAGES,
   clampMaxResults,
   clampTextBytes,
   toRating,
@@ -107,4 +111,5 @@ export {
   formatRating,
   formatSearchAll,
   formatText,
+  formatTextSearch,
 } from "./core/format.ts";

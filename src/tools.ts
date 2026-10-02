@@ -10,7 +10,7 @@
 
 import { defineTool, Type, type ToolDefinition } from "@agntn/tools";
 
-import { MAX_TEXT_BYTES } from "./core/types.ts";
+import { MAX_TEXT_BYTES, MAX_TEXT_SEARCH_PAGES } from "./core/types.ts";
 
 let operations: Promise<typeof import("./tool-operations.ts")> | undefined;
 
@@ -167,5 +167,66 @@ export const textTool = defineTool({
   execute: async (params) => (await loadOperations()).booksText(params),
 });
 
-/** The four book tools, discovery first. */
-export const bookTools: readonly ToolDefinition[] = [providersTool, searchTool, getTool, textTool];
+export const textSearchTool = defineTool({
+  name: "books_text_search",
+  title: "Books Text Search",
+  description:
+    "Find a phrase inside scanned books, lending-only ones included, and return the short passages around each match with the scan id, page and reader link. Only Open Library serves it. Pass a scan id as book to keep one book's passages; nextPage reads on.",
+  snippet:
+    "Use books_text_search to find a phrase inside a scanned book that books_text cannot read.",
+  guidelines: [
+    "books_text_search matches its query as a phrase: every word has to stand next to the others in the scan. Search for a few distinctive words, not a sentence.",
+    "Pass the id of a books_text_search match as book to keep only that scan's passages. The search ranks the whole corpus, so a common phrase can bury the book past maxPages, while a rarer phrase from the same book finds it on the first page.",
+    "A books_text_search passage is about a dozen words of OCR text. To read on, search again from the last words of the previous passage, with the same book.",
+  ],
+  effect: "read",
+  openWorld: true,
+  input: Type.Object(
+    {
+      query: Type.String({
+        minLength: 1,
+        maxLength: 500,
+        pattern: "\\S",
+        description: "Phrase to find, for example 'the spice must flow'",
+      }),
+      book: Type.Optional(
+        Type.String({
+          maxLength: 200,
+          description: "Scan id from a previous match; only that book's passages are returned",
+        }),
+      ),
+      page: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          description: "Page of hits to start at; use nextPage from the previous result",
+        }),
+      ),
+      limit: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          maximum: 100,
+          description: "Hits on one page; defaults to 20, or 100 with book. Keep it when paging",
+        }),
+      ),
+      maxPages: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          maximum: MAX_TEXT_SEARCH_PAGES,
+          description: `Pages to read while looking for book, up to ${MAX_TEXT_SEARCH_PAGES}; defaults to 3. Each can take ten seconds`,
+        }),
+      ),
+      provider,
+    },
+    { additionalProperties: false },
+  ),
+  execute: async (params) => (await loadOperations()).booksTextSearch(params),
+});
+
+/** The book tools, discovery first. */
+export const bookTools: readonly ToolDefinition[] = [
+  providersTool,
+  searchTool,
+  getTool,
+  textTool,
+  textSearchTool,
+];

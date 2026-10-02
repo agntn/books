@@ -5,6 +5,9 @@
  * particular printing, `OL…M`); ISBNs, page counts and publishers belong to editions, while
  * blurbs, subjects and reader scores belong to works. A record here is stitched from both.
  *
+ * Full-text search runs over the Internet Archive's scans, lending-only books included, and
+ * answers with short passages, not a readable text: `text` stays false.
+ *
  * API: https://openlibrary.org/developers/api (REST, JSON)
  */
 
@@ -15,6 +18,9 @@ import type {
   ProviderCapabilities,
   ProviderConfig,
   SearchOptions,
+  TextMatch,
+  TextSearchOptions,
+  TextSearchResult,
 } from "../core/types.ts";
 import { Provider, assertBookQuery, assertQuery } from "../core/provider.ts";
 import { buildQuery } from "../core/client.ts";
@@ -22,7 +28,7 @@ import { HTTPError, InvalidInputError, NotFoundError, ParseError } from "../core
 import { toIsbn10, toIsbn13 } from "../core/isbn.ts";
 import { register } from "../core/registry.ts";
 import { normalizeText, parseYear, uniqueStrings } from "../core/text.ts";
-import { MAX_SUBJECTS, clampMaxResults, toRating } from "../core/types.ts";
+import { MAX_SUBJECTS, MAX_TEXT_SEARCH_PAGES, clampMaxResults, toRating } from "../core/types.ts";
 
 const MAX_RESULTS = 20;
 const DEFAULT_BASE_URL = "https://openlibrary.org";
@@ -50,6 +56,19 @@ const SEARCH_FIELDS = [
   "ratings_count",
 ].join(",");
 
+/** Hits on one full-text page, and the most a caller may ask for. */
+const TEXT_SEARCH_RESULTS = 20;
+const MAX_TEXT_SEARCH_RESULTS = 100;
+
+/** Default pages for `book`: the endpoint ignores `identifier:`, so hits are filtered here. */
+const DEFAULT_TEXT_SEARCH_PAGES = 3;
+
+/** An uncached full-text query took 10 to 16 seconds in the audit, past the shared 15. */
+const TEXT_SEARCH_TIMEOUT_MS = 30_000;
+
+/** archive.org identifiers: letters, digits, `.`, `-` and `_`, never starting with a dot. */
+const SCAN_ID = /^[\w-][\w.-]*$/;
+
 /** Open Library's rating scale. */
 const RATING_SCALE = 5;
 
@@ -71,6 +90,22 @@ interface OpenLibrarySearchDocument {
 interface OpenLibrarySearchResponse {
   numFound?: number;
   docs?: OpenLibrarySearchDocument[];
+}
+
+/** One hit of `/search/inside.json`; the metadata fields arrive as one-element arrays. */
+interface OpenLibraryInsideHit {
+  fields?: {
+    identifier?: string[];
+    meta_title?: string[];
+    meta_creator?: string[];
+    meta_year?: number[];
+    page_num?: number[][];
+  };
+  highlight?: { text?: string[] };
+}
+
+interface OpenLibraryInsideResponse {
+  hits?: { total?: number | { value?: number }; hits?: OpenLibraryInsideHit[] };
 }
 
 interface OpenLibraryEdition {
@@ -166,6 +201,33 @@ function pickIsbn(isbns: string[] | undefined): string | undefined {
   return undefined;
 }
 
+/** The scan a full-text hit belongs to, or `undefined` for a hit without a usable identifier. */
+function toTextMatch(hit: OpenLibraryInsideHit, query: string): TextMatch | undefined {
+  const fields = hit.fields ?? {};
+  const id = fields.identifier?.[0];
+  if (!id || !SCAN_ID.test(id)) return undefined;
+  return {
+    id,
+    title: fields.meta_title?.[0] ? normalizeText(fields.meta_title[0]) : undefined,
+    authors: uniqueStrings(fields.meta_creator ?? []),
+    year: fields.meta_year?.[0],
+    page: fields.page_num?.[0]?.[0],
+    snippets: (hit.highlight?.text ?? []).map((snippet) => snippet.trim()).filter(Boolean),
+    url: `https://archive.org/details/${id}${buildQuery({ q: `"${query}"` })}`,
+  };
+}
+
+/** `hits.total` is a number here, and an object in newer Elasticsearch responses. */
+function hitTotal(hits: OpenLibraryInsideResponse["hits"]): number {
+  const total = hits?.total;
+  return (typeof total === "number" ? total : total?.value) ?? 0;
+}
+
+/** A caller's number, or `fallback` when it is missing, `NaN` or infinite. */
+function finiteOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) ? value : fallback;
+}
+
 class OpenLibrary extends Provider {
   static readonly key = "openlibrary";
 
@@ -181,6 +243,7 @@ class OpenLibrary extends Provider {
       search: true,
       book: true,
       text: false,
+      searchText: true,
       isbn: true,
       ratings: true,
     };
@@ -204,6 +267,59 @@ class OpenLibrary extends Provider {
       url: doc.key ? `${this.baseUrl}${doc.key}` : undefined,
       rating: toRating(doc.ratings_average, RATING_SCALE, doc.ratings_count),
     }));
+  }
+
+  /** Find a phrase; with `book`, read pages until that scan shows up or `maxPages` run out. */
+  override async searchText(query: string, options?: TextSearchOptions): Promise<TextSearchResult> {
+    assertQuery(query, OpenLibrary.key);
+    const phrase = query.trim();
+    const book = options?.book?.trim() || undefined;
+    if (book && !SCAN_ID.test(book)) {
+      throw new InvalidInputError(
+        "book must be the id of a text search match: letters, digits, '.', '-' and '_'",
+        OpenLibrary.key,
+      );
+    }
+
+    const limit = clampMaxResults(
+      finiteOr(options?.limit, book ? MAX_TEXT_SEARCH_RESULTS : TEXT_SEARCH_RESULTS),
+      MAX_TEXT_SEARCH_RESULTS,
+    );
+    const pages = book
+      ? clampMaxResults(
+          finiteOr(options?.maxPages, DEFAULT_TEXT_SEARCH_PAGES),
+          MAX_TEXT_SEARCH_PAGES,
+        )
+      : 1;
+    const first = Math.max(1, Math.round(finiteOr(options?.page, 1)));
+
+    let page = first;
+    let total = 0;
+    let matches: TextMatch[] = [];
+    for (; page < first + pages; page += 1) {
+      const url = `${this.baseUrl}/search/inside.json${buildQuery({ q: phrase, page, limit })}`;
+      const data = await this.getJSON<OpenLibraryInsideResponse>(url, TEXT_SEARCH_TIMEOUT_MS);
+      if (!data.hits) {
+        throw new ParseError("full-text search answered without hits", OpenLibrary.key);
+      }
+      total = hitTotal(data.hits);
+      const found = (data.hits.hits ?? [])
+        .map((hit) => toTextMatch(hit, phrase))
+        .filter((match) => match !== undefined);
+      matches = book ? found.filter((match) => match.id === book) : found;
+      if (matches.length > 0 || !book || page * limit >= total) break;
+    }
+
+    const last = Math.min(page, first + pages - 1);
+    return {
+      provider: OpenLibrary.key,
+      query: phrase,
+      total,
+      page: last,
+      matches,
+      nextPage: last * limit < total ? last + 1 : undefined,
+      attribution: "Passages from Internet Archive scans, found through Open Library",
+    };
   }
 
   /**

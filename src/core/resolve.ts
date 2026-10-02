@@ -22,12 +22,14 @@ export function providerArg(value?: string): string | undefined {
  * Registered providers that serve `capability` and are usable in this environment, in
  * registration order.
  *
- * The three operations are one question and the two result kinds are another, but callers need
+ * The four operations are one question and the two result kinds are another, but callers need
  * both from one list: an ISBN lookup that walks a catalog which cannot search by ISBN wastes a
  * request and reports "not found" for a book the next provider has.
  */
 export function usableProviders(capability: keyof ProviderCapabilities): string[] {
-  return providers().filter((name) => isConfigured(name) && create(name).capabilities[capability]);
+  return providers().filter(
+    (name) => isConfigured(name) && create(name).capabilities[capability] === true,
+  );
 }
 
 /**

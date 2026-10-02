@@ -66,6 +66,7 @@ const main = defineCommand({
     search: () => import("./commands/search.ts").then((m) => m.default),
     get: () => import("./commands/get.ts").then((m) => m.default),
     text: () => import("./commands/text.ts").then((m) => m.default),
+    "search-text": () => import("./commands/search-text.ts").then((m) => m.default),
     providers: () => import("./commands/providers.ts").then((m) => m.default),
     mcp: loadMcpCommand,
   },

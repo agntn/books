@@ -36,11 +36,12 @@ afterEach(() => {
 });
 
 describe("openlibrary provider", () => {
-  it("serves search, records, ISBN lookups and ratings, but no texts", () => {
+  it("serves search, records, ISBN lookups, ratings and passages, but no texts", () => {
     expect(create("openlibrary").capabilities).toEqual({
       search: true,
       book: true,
       text: false,
+      searchText: true,
       isbn: true,
       ratings: true,
     });
@@ -168,5 +169,155 @@ describe("openlibrary provider", () => {
       InvalidInputError,
     );
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+/** One `/search/inside.json` hit in the live shape: one-element arrays and nested page numbers. */
+function insideHit(identifier: string, snippet: string) {
+  return {
+    fields: {
+      identifier: [identifier],
+      meta_title: [`Placeholder ${identifier}`],
+      meta_creator: ["Placeholder, Author"],
+      meta_year: [1999],
+      page_num: [[42]],
+    },
+    highlight: { text: [snippet] },
+  };
+}
+
+function insidePage(total: number, ...hits: ReturnType<typeof insideHit>[]) {
+  return { body: { hits: { total, hits } } };
+}
+
+describe("openlibrary searchText", () => {
+  it("maps each hit to its scan, passages and reader link", async () => {
+    const fetch = stubRoutes({
+      "/search/inside.json": insidePage(
+        45,
+        insideHit("placeholderscan0000auth", "before {{{the made-up phrase}}}\nafter "),
+      ),
+    });
+
+    const result = await create("openlibrary").searchText!(" the made-up phrase ");
+
+    const url = new URL(String(fetch.mock.calls[0]?.[0]));
+    expect(url.pathname).toBe("/search/inside.json");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: "the made-up phrase",
+      page: "1",
+      limit: "20",
+    });
+    expect(result).toMatchObject({
+      provider: "openlibrary",
+      query: "the made-up phrase",
+      total: 45,
+      page: 1,
+      nextPage: 2,
+    });
+    expect(result.matches).toEqual([
+      {
+        id: "placeholderscan0000auth",
+        title: "Placeholder placeholderscan0000auth",
+        authors: ["Placeholder, Author"],
+        year: 1999,
+        page: 42,
+        snippets: ["before {{{the made-up phrase}}}\nafter"],
+        url: "https://archive.org/details/placeholderscan0000auth?q=%22the+made-up+phrase%22",
+      },
+    ]);
+  });
+
+  it("reads pages of 100 until the named book shows up, and keeps only its passages", async () => {
+    const fetch = stubRoutes({
+      "page=1&": insidePage(250, insideHit("otherscan", "{{{phrase}}} elsewhere")),
+      "page=2&": insidePage(
+        250,
+        insideHit("otherscan", "{{{phrase}}} again"),
+        insideHit("targetscan", "{{{phrase}}} here"),
+      ),
+    });
+
+    const result = await create("openlibrary").searchText!("phrase", { book: "targetscan" });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(String(fetch.mock.calls[1]?.[0])).toContain("limit=100");
+    expect(result.page).toBe(2);
+    expect(result.nextPage).toBe(3);
+    expect(result.matches.map((match) => match.id)).toEqual(["targetscan"]);
+  });
+
+  it("stops at maxPages and says where to read on", async () => {
+    const fetch = stubRoutes({
+      "/search/inside.json": insidePage(1000, insideHit("otherscan", "x")),
+    });
+
+    const result = await create("openlibrary").searchText!("phrase", {
+      book: "targetscan",
+      page: 4,
+      maxPages: 2,
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(String(fetch.mock.calls[1]?.[0])).toContain("page=5&");
+    expect(result).toMatchObject({ page: 5, nextPage: 6, matches: [] });
+  });
+
+  it("stops at the end of the corpus before maxPages run out", async () => {
+    const fetch = stubRoutes({
+      "/search/inside.json": insidePage(30, insideHit("otherscan", "x")),
+    });
+
+    const result = await create("openlibrary").searchText!("phrase", {
+      book: "targetscan",
+      maxPages: 5,
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ page: 1, matches: [] });
+    expect(result.nextPage).toBeUndefined();
+  });
+
+  it("reads a NaN page, limit or maxPages as absent instead of sending nothing", async () => {
+    const fetch = stubRoutes({
+      "/search/inside.json": insidePage(1000, insideHit("otherscan", "x")),
+    });
+
+    await create("openlibrary").searchText!("phrase", {
+      book: "targetscan",
+      page: Number.NaN,
+      limit: Number.NaN,
+      maxPages: Number.NaN,
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(String(fetch.mock.calls[0]?.[0])).toContain("page=1&limit=100");
+  });
+
+  it("drops a hit whose identifier would leave the reader's path", async () => {
+    stubRoutes({
+      "/search/inside.json": insidePage(2, insideHit("../admin", "x"), insideHit("goodscan", "y")),
+    });
+
+    const result = await create("openlibrary").searchText!("phrase");
+
+    expect(result.matches.map((match) => match.id)).toEqual(["goodscan"]);
+  });
+
+  it("refuses a malformed book id and an empty phrase before sending a request", async () => {
+    const fetch = stubRoutes({});
+    const provider = create("openlibrary");
+
+    await expect(provider.searchText!("phrase", { book: "a b" })).rejects.toThrow(
+      InvalidInputError,
+    );
+    await expect(provider.searchText!("   ")).rejects.toThrow(InvalidInputError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("reports a response without hits as a parse failure, not as no matches", async () => {
+    stubRoutes({ "/search/inside.json": { body: { error: "search unavailable" } } });
+
+    await expect(create("openlibrary").searchText!("phrase")).rejects.toThrow(ParseError);
   });
 });

@@ -36,6 +36,7 @@ books search "dune herbert" --limit 3      # candidates, with the id for an exac
 books search "Lalka Prus" --provider all   # the same query put to every catalog at once
 books get "Diuna" --author Herbert -p lubimyczytac
 books text "Frankenstein" --author Shelley --bytes 4000
+books search-text "the spice must flow"    # a phrase inside scanned books
 books providers                            # who is registered and what each can serve
 ```
 
@@ -52,15 +53,29 @@ Bytes 2000-2300 of 860296
 (continues - read on from 2300)
 ```
 
+A book still in copyright has no text here. Open Library can still search inside its scan, and
+`books search-text` brings back the lines around the phrase. Got the scan id from a first search?
+Pass it as `--book` and only that book answers:
+
+```console
+$ books search-text "the spice must flow" --book dunehousecorrino0000herb
+[openlibrary] "the spice must flow" in dunehousecorrino0000herb (page 1):
+Dune : House Corrino - Herbert, Brian  (2001, page 694, id=dunehousecorrino0000herb)
+  > piles.” “We have a mystery here.” “{{{The spice must flow}}}.” “All melange harvesting and processing
+  > production to salve your petty pride. {{{The spice must flow}}}.” Shaddam sniffed. “Then perhaps you
+  https://archive.org/details/dunehousecorrino0000herb?q=%22the+spice+must+flow%22
+Passages from Internet Archive scans, found through Open Library
+```
+
 ## The catalogs
 
-| Provider       | Search | Record | Text | By ISBN | Ratings | What it is for                                         |
-| -------------- | ------ | ------ | ---- | ------- | ------- | ------------------------------------------------------ |
-| `openlibrary`  | ✓      | ✓      |      | ✓       | ✓       | The broad default: editions, works, blurbs, scores     |
-| `gutendex`     | ✓      | ✓      | ✓    |         |         | Project Gutenberg - English texts, out of copyright    |
-| `wolnelektury` | ✓      | ✓      | ✓    |         |         | Polish free-licence library - texts and audiobooks     |
-| `bn`           | ✓      | ✓      |      | ✓       |         | Polish national bibliography, read out of its MARC     |
-| `lubimyczytac` | ✓      | ✓      |      |         | ✓       | Polish readers: contemporary editions and their scores |
+| Provider       | Search | Record | Text | Inside | By ISBN | Ratings | What it is for                                         |
+| -------------- | ------ | ------ | ---- | ------ | ------- | ------- | ------------------------------------------------------ |
+| `openlibrary`  | ✓      | ✓      |      | ✓      | ✓       | ✓       | The broad default: editions, works, blurbs, scores     |
+| `gutendex`     | ✓      | ✓      | ✓    |        |         |         | Project Gutenberg - English texts, out of copyright    |
+| `wolnelektury` | ✓      | ✓      | ✓    |        |         |         | Polish free-licence library - texts and audiobooks     |
+| `bn`           | ✓      | ✓      |      |        | ✓       |         | Polish national bibliography, read out of its MARC     |
+| `lubimyczytac` | ✓      | ✓      |      |        |         | ✓       | Polish readers: contemporary editions and their scores |
 
 None of them needs an API key. Registration order is the order a lookup walks them: the broad
 catalog first, then the two public-domain libraries, then the Polish ones. A Polish edition that
@@ -103,7 +118,8 @@ fails its check digit before any request goes out. ISBN handling is exported too
 
 ## For agents
 
-**MCP** - four read-only tools (`books_search`, `books_get`, `books_text`, `books_providers`):
+**MCP** - read-only tools (`books_search`, `books_get`, `books_text`, `books_text_search`,
+`books_providers`):
 
 ```bash
 claude mcp add books --scope user -- node ~/Projekty/agntn/books/dist/cli.mjs mcp
@@ -112,10 +128,10 @@ claude mcp add books --scope user -- node ~/Projekty/agntn/books/dist/cli.mjs mc
 Run from a checkout, that command serves `src/`, so an edit needs a server restart, not a
 rebuild. `BOOKS_DIST=1` pins it to the bundle.
 
-**Vercel AI SDK** - `import { bookTool, searchTool, textTool, providersTool } from "@agntn/books/ai"`.
+**Vercel AI SDK** - `import { bookTool, searchTool, textTool, textSearchTool, providersTool } from "@agntn/books/ai"`.
 
 **Pi and OMP** - the package ships an extension for each; `pi install <path>` and
-`omp install <path>` register the same four tools.
+`omp install <path>` register the same tools.
 
 ## Worth knowing
 
@@ -126,6 +142,9 @@ rebuild. `BOOKS_DIST=1` pins it to the bundle.
   what this library needs. A redesign surfaces as `ParseError` naming the page - and their terms
   of service govern automated access, which is the operator's decision to make, not this
   library's to assume.
+- **Searching inside a book is a phrase search over the whole corpus.** Every word has to sit
+  next to the others. A common line can bury your book past the pages read, so `--book` comes back
+  empty. Pick a rarer phrase from the same book and it's usually on page one.
 - **The National Library indexes fields, not free text.** A search is tried as a title and then
   as an author; a phrase mixing both finds nothing, the way it would in the catalogue itself.
 - **Gutendex has bad days.** It answers in half a second, or with a 503, or not at all - all
