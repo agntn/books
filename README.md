@@ -165,8 +165,9 @@ rebuild. `BOOKS_DIST=1` pins it to the bundle.
 
 ```bash
 pnpm install
-pnpm test        # vitest, every backend stubbed
+pnpm test        # vp test, every backend stubbed
 pnpm typecheck   # tsc, then build, then the extensions
+pnpm lint        # build, then vp lint and vp fmt --check
 pnpm build       # obuild - one bundle, four entries sharing the provider registry
 ```
 

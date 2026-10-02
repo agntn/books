@@ -24,6 +24,12 @@ export interface SerializedOutcome<T> {
   error?: string;
 }
 
+/**
+ * Run one operation on every registered provider in parallel.
+ *
+ * @param {(provider: Provider) => Promise<T>} run The operation.
+ * @returns {Promise<ProviderOutcome<T>[]>} One outcome per provider, in registration order.
+ */
 async function runAll<T>(run: (provider: Provider) => Promise<T>): Promise<ProviderOutcome<T>[]> {
   return Promise.all(
     providers().map(async (name): Promise<ProviderOutcome<T>> => {
@@ -45,6 +51,10 @@ async function runAll<T>(run: (provider: Provider) => Promise<T>): Promise<Provi
  *
  *   const outcomes = await searchAll("dune herbert", { limit: 3 });
  *   ```
+ *
+ * @param {string} query Free-form search query.
+ * @param {SearchOptions} [options] Result limit.
+ * @returns {Promise<ProviderOutcome<BookMatch[]>[]>} Each provider's matches or failure.
  */
 export function searchAll(
   query: string,
@@ -58,6 +68,9 @@ export function searchAll(
  *
  * Catalogs disagree about page counts, publication years and even titles, and each describes the
  * edition it happens to hold; comparing them is the point.
+ *
+ * @param {BookQuery} query The book to look up.
+ * @returns {Promise<ProviderOutcome<Book>[]>} Each provider's record or failure.
  */
 export function bookAll(query: BookQuery): Promise<ProviderOutcome<Book>[]> {
   return runAll((provider) => requireOperation(provider, "book")(query));
@@ -103,6 +116,9 @@ const SKIPPABLE_ERRORS = new Set([
  * where the caller can see the backend failed rather than lacked the book. A timeout is
  * different: five providers each given fifteen seconds is over a minute of waiting, so the walk
  * stops and says what happened.
+ *
+ * @param {BooksError} error A normalized failure.
+ * @returns {boolean} Whether the walk moves on to the next provider.
  */
 function isSkippable(error: BooksError): boolean {
   if (SKIPPABLE_ERRORS.has(error.name)) return true;
@@ -110,8 +126,17 @@ function isSkippable(error: BooksError): boolean {
   return error.name === "HTTPError" && status !== undefined && status >= 500;
 }
 
+/**
+ * Try providers in order until one answers.
+ *
+ * @param {readonly string[]} order Registry keys to try.
+ * @param {(provider: Provider) => Promise<T>} run The operation.
+ * @param {() => string} describe What was asked for, for the error when nobody had it.
+ * @returns {Promise<FallbackResult<T>>} The answer and the providers passed over before it.
+ * @throws {BooksError} The first failure that stops the walk, or the last one.
+ */
 async function walk<T>(
-  order: string[],
+  order: readonly string[],
   run: (provider: Provider) => Promise<T>,
   describe: () => string,
 ): Promise<FallbackResult<T>> {
@@ -132,7 +157,12 @@ async function walk<T>(
   throw lastError ?? new NotFoundError(describe());
 }
 
-/** Human-readable form of a query, for the error raised when nobody had the book. */
+/**
+ * Human-readable form of a query, for the error raised when nobody had the book.
+ *
+ * @param {BookQuery} query The book query.
+ * @returns {string} The query's fields joined by ` / `.
+ */
 function describeQuery(query: BookQuery): string {
   return (
     [query.isbn && `ISBN ${query.isbn}`, query.title, query.author, query.id && `id ${query.id}`]
@@ -163,11 +193,14 @@ function describeQuery(query: BookQuery): string {
  * Declared `async` on purpose: a rejected query has to come back as a rejected promise, because
  * a caller holding one catches with `.catch` and would walk straight past a synchronous throw.
  *
+ * @param {BookQuery} query The book to look up.
+ * @param {readonly string[]} [order] Registry keys to try; the usable catalogs by default.
+ * @returns {Promise<FallbackResult<Book>>} The record and the providers passed over before it.
  * @throws {BooksError} The last failure, when no provider could serve the book.
  */
 export async function bookWithFallback(
   query: BookQuery,
-  order: string[] = query.isbn ? usableProviders("isbn") : usableProviders("book"),
+  order: readonly string[] = query.isbn ? usableProviders("isbn") : usableProviders("book"),
 ): Promise<FallbackResult<Book>> {
   const checked = assertBookQuery(query, "books");
   return walk(
@@ -180,12 +213,16 @@ export async function bookWithFallback(
 /**
  * Ask the public-domain libraries for a book's text in order until one has it.
  *
+ * @param {BookQuery} query The book to read.
+ * @param {TextOptions} [options] Offset and byte count.
+ * @param {readonly string[]} [order] Registry keys to try; the usable libraries by default.
+ * @returns {Promise<FallbackResult<BookText>>} The slice and the providers skipped before it.
  * @throws {BooksError} The last failure, when no library could serve the text.
  */
 export async function textWithFallback(
   query: BookQuery,
   options?: TextOptions,
-  order: string[] = usableProviders("text"),
+  order: readonly string[] = usableProviders("text"),
 ): Promise<FallbackResult<BookText>> {
   const checked = assertBookQuery(query, "books");
   return walk(
@@ -195,8 +232,15 @@ export async function textWithFallback(
   );
 }
 
-/** Reduce outcomes to a JSON-safe shape for MCP and AI tool results. */
-export function serializeOutcomes<T>(outcomes: ProviderOutcome<T>[]): SerializedOutcome<T>[] {
+/**
+ * Reduce outcomes to a JSON-safe shape for MCP and AI tool results.
+ *
+ * @param {readonly ProviderOutcome<T>[]} outcomes Outcomes from a fan-out.
+ * @returns {SerializedOutcome<T>[]} The outcomes with errors reduced to their messages.
+ */
+export function serializeOutcomes<T>(
+  outcomes: readonly ProviderOutcome<T>[],
+): SerializedOutcome<T>[] {
   return outcomes.map((outcome) =>
     outcome.error
       ? { provider: outcome.provider, error: outcome.error.message }

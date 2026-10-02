@@ -310,6 +310,10 @@ export const MAX_ANCHOR_WORDS = 12;
  * Round a requested result limit and keep it inside the provider's range.
  *
  * A missing or zero limit uses `max`.
+ *
+ * @param {number} [limit] Limit the caller asked for.
+ * @param {number} [max] The provider's ceiling.
+ * @returns {number} A whole number in `[1, max]`.
  */
 export function clampMaxResults(limit?: number, max = 10): number {
   if (!limit) return max;
@@ -322,6 +326,11 @@ export function clampMaxResults(limit?: number, max = 10): number {
  * Catalogs print an unrated book as `0`, which is not a score on any of their scales: rendering
  * it as `0/10` reads as a book readers hated rather than one nobody has opened. Both providers
  * that carry ratings go through here, so they cannot disagree about it.
+ *
+ * @param {number | undefined} average Average score the catalog reports.
+ * @param {number} scale Highest score on the catalog's scale.
+ * @param {number} [count] Number of ratings behind the average.
+ * @returns {Rating | undefined} The rating, or `undefined` for an unrated book.
  */
 export function toRating(
   average: number | undefined,
@@ -337,6 +346,9 @@ export function toRating(
  *
  * Lives here rather than in each provider because the ceiling protects the caller's context
  * window, which has nothing to do with which library serves the file.
+ *
+ * @param {number} [maxBytes] Byte count the caller asked for.
+ * @returns {number} A whole number of bytes in `[1, MAX_TEXT_BYTES]`.
  */
 export function clampTextBytes(maxBytes?: number): number {
   if (!maxBytes) return DEFAULT_TEXT_BYTES;

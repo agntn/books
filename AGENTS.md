@@ -217,7 +217,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 21 files / 233 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (`vp test run`, 21 files / 233 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
 because the publish job tests before it builds.
@@ -235,10 +235,16 @@ Verified beyond the suite:
 ```bash
 pnpm build       # obuild → dist/ (one bundle: index, cli, mcp, ai)
 pnpm typecheck   # tsc → build → tsc -p tsconfig.extensions.json
-pnpm test        # vitest --run
-pnpm fmt         # oxlint --fix + oxfmt
-pnpm lint        # oxlint + oxfmt --check
+pnpm test        # vp test run
+pnpm fmt         # build → vp lint --fix → vp fmt
+pnpm lint        # build → vp lint → vp fmt --check
 ```
+
+Lint, format and test run on Vite+ from `vite.config.ts`, which spreads the `@agntn/ox` policy;
+the build stays on obuild. `lint` and `fmt` build first because the extensions type-import
+`dist/tools.d.mts`, and without it the type-aware rules read them as `error` types. The
+readonly allow-list there holds public types and host ABI only: a new internal type gets
+`readonly` fields instead of an entry.
 
 `pnpm install --ignore-scripts` breaks the build: `rolldown-plugin-dts` fails with
 `Unexpected end of JSON input` because the TypeScript 7 native binary never gets installed.

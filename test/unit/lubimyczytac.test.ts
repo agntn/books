@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { InvalidInputError, ParseError, UnsupportedOperationError } from "../../src/core/errors.ts";
 import { create } from "../../src/core/registry.ts";
 import { stubRoutes } from "../helpers.ts";

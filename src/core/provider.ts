@@ -31,7 +31,11 @@ export abstract class Provider {
     this.timeout = config.timeout;
   }
 
-  /** Registry key owned by the concrete class. */
+  /**
+   * Registry key owned by the concrete class.
+   *
+   * @returns {string} The key the class registered under.
+   */
   get name(): string {
     return (this.constructor as ProviderConstructor).key;
   }
@@ -51,12 +55,23 @@ export abstract class Provider {
   /** Find a phrase inside scanned books, best match first. */
   searchText?(query: string, options?: TextSearchOptions): Promise<TextSearchResult>;
 
-  /** Provider-attributed GET for JSON; a configured timeout beats the `defaultTimeout`. */
+  /**
+   * Provider-attributed GET for JSON; a configured timeout beats the `defaultTimeout`.
+   *
+   * @param {string} url Request URL.
+   * @param {number} [defaultTimeout] Timeout for this request when none is configured.
+   * @returns {Promise<T>} The parsed body.
+   */
   protected getJSON<T>(url: string, defaultTimeout?: number): Promise<T> {
     return getJSON<T>(url, { timeout: this.timeout ?? defaultTimeout, provider: this.name });
   }
 
-  /** Execute a provider-attributed GET request for an HTML page. */
+  /**
+   * Execute a provider-attributed GET request for an HTML page.
+   *
+   * @param {string} url Request URL.
+   * @returns {Promise<string>} The page source.
+   */
   protected getText(url: string): Promise<string> {
     return getText(url, { timeout: this.timeout, provider: this.name });
   }
@@ -67,6 +82,10 @@ export abstract class Provider {
    * The URL comes out of a provider's own response - Gutenberg's `formats` map, the Wolne
    * Lektury `txt` field - so it is checked before it is fetched. A catalog that started handing
    * out `file://` or a host on the caller's network would otherwise have this library read it.
+   *
+   * @param {string} url URL of the text file.
+   * @param {TextOptions} [options] Offset and byte count the caller asked for.
+   * @returns {Promise<TextSlice>} The slice.
    */
   protected readSlice(url: string, options?: TextOptions): Promise<TextSlice> {
     assertHttpUrl(url, this.name);
@@ -99,6 +118,9 @@ export interface ProviderConstructor {
 /**
  * Reject a file URL that is not plain HTTP(S) before fetching it.
  *
+ * @param {string} url URL a provider handed out.
+ * @param {string} provider Provider named in the error.
+ * @returns {string} The URL, unchanged.
  * @throws {InvalidInputError} When the URL is malformed or uses another scheme.
  */
 export function assertHttpUrl(url: string, provider: string): string {
@@ -117,6 +139,8 @@ export function assertHttpUrl(url: string, provider: string): string {
 /**
  * Reject an empty or whitespace-only search query before any request is sent.
  *
+ * @param {string} query The search query.
+ * @param {string} provider Provider named in the error.
  * @throws {InvalidInputError} When `query` carries no content.
  */
 export function assertQuery(query: string, provider: string): void {
@@ -132,24 +156,29 @@ export function assertQuery(query: string, provider: string): void {
  * is not one - "a book by Herbert" names a shelf, not a book - so it is rejected here rather
  * than turned into whichever title a catalog happens to sort first.
  *
- * @returns The query with a normalized `isbn` when it carried one.
+ * @param {BookQuery} query The query as the caller passed it.
+ * @param {string} provider Provider named in the error.
+ * @returns {BookQuery} The query with a normalized `isbn` when it carried one.
  * @throws {InvalidInputError} When no field identifies a book, or the ISBN fails its check digit.
  */
 export function assertBookQuery(query: BookQuery, provider: string): BookQuery {
   const isbn = query.isbn?.trim();
-  const id = query.id?.trim();
-  const title = query.title?.trim();
-
-  if (!isbn && !id && !title) {
-    throw new InvalidInputError(
-      query.author?.trim()
-        ? "author alone cannot identify a book: pass a title, an isbn, or a provider id"
-        : "query needs one of isbn, id, or title",
-      provider,
-    );
+  if (!isbn && !query.id?.trim() && !query.title?.trim()) {
+    throw new InvalidInputError(unidentifiedReason(query), provider);
   }
-
   return isbn ? { ...query, isbn: assertIsbn(isbn, provider) } : query;
+}
+
+/**
+ * Say why a query with no ISBN, id or title can't name a book.
+ *
+ * @param {BookQuery} query The rejected query.
+ * @returns {string} The error message.
+ */
+function unidentifiedReason(query: BookQuery): string {
+  return query.author?.trim()
+    ? "author alone cannot identify a book: pass a title, an isbn, or a provider id"
+    : "query needs one of isbn, id, or title";
 }
 
 /**
@@ -157,6 +186,9 @@ export function assertBookQuery(query: BookQuery, provider: string): BookQuery {
  *
  * Three of the five backends reach their records through their own search box, and each built
  * this string for itself.
+ *
+ * @param {BookQuery} query The book query.
+ * @returns {string} Title and author joined by a space.
  */
 export function searchTerms(query: BookQuery): string {
   return [query.title, query.author].filter(Boolean).join(" ");
@@ -171,6 +203,9 @@ export type ProviderOperation = "search" | "book" | "text" | "searchText";
  * The runtime check covers both halves of the contract: a provider that advertises an operation
  * it never implemented fails here rather than as `undefined is not a function` deeper in a call.
  *
+ * @param {Provider} provider The provider to call.
+ * @param {K} operation The operation to call.
+ * @returns {NonNullable<Provider[K]>} The method, bound to `provider`.
  * @throws {UnsupportedOperationError} When the provider does not serve the operation.
  */
 export function requireOperation<K extends ProviderOperation>(

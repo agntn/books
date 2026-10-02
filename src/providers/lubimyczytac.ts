@@ -24,6 +24,7 @@ import { InvalidInputError, NotFoundError, UnsupportedOperationError } from "../
 import { toIsbn13 } from "../core/isbn.ts";
 import { jsonLd, ldNames, ldString, parseHtml, requireJsonLd, selectText } from "../core/html.ts";
 import type { JsonLdNode } from "../core/html.ts";
+import type { HTMLElement } from "node-html-parser";
 import { register } from "../core/registry.ts";
 import { normalizeText, parseYear, uniqueStrings } from "../core/text.ts";
 import { clampMaxResults, toRating } from "../core/types.ts";
@@ -44,25 +45,46 @@ const DESCRIPTION_SELECTOR = "#book-description";
 /** A book id here is the site path segment pair, as `search()` returns it: `4942534/diuna`. */
 const PATH_ID = /^\d+\/[a-z0-9-]+$/;
 
-/** The site prints decimals the Polish way. */
+/**
+ * The site prints decimals the Polish way.
+ *
+ * @param {string | undefined} value A number such as `7,8`.
+ * @returns {number | undefined} The number, or `undefined` when it doesn't parse.
+ */
 function parseDecimal(value: string | undefined): number | undefined {
-  const parsed = Number(value?.replace(",", ".").replace(/[^\d.]/g, ""));
+  const parsed = Number(value?.replace(",", ".").replaceAll(/[^\d.]/g, ""));
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** `z 24419 ocen` - the count lives in the text next to the average. */
+/**
+ * `z 24419 ocen` - the count lives in the text next to the average.
+ *
+ * @param {string | undefined} value Text carrying a count.
+ * @returns {number | undefined} The first number in it.
+ */
 function parseCount(value: string | undefined): number | undefined {
-  const digits = value?.replace(/\s/g, "").match(/(\d+)/)?.[1];
+  const digits = value?.replaceAll(/\s/g, "").match(/(\d+)/)?.[1];
   return digits ? Number(digits) : undefined;
 }
 
-/** `https://lubimyczytac.pl/ksiazki/k/41/fantasy-science-fiction` names a category in its slug. */
+/**
+ * `https://lubimyczytac.pl/ksiazki/k/41/fantasy-science-fiction` names a category in its slug.
+ *
+ * @param {string | undefined} url A category page URL.
+ * @returns {string | undefined} The category, with spaces for hyphens.
+ */
 function categoryFromUrl(url: string | undefined): string | undefined {
   const slug = url?.split("/").filter(Boolean).pop();
-  return slug ? slug.replace(/-/g, " ") : undefined;
+  return slug ? slug.replaceAll("-", " ") : undefined;
 }
 
-function readRating(node: JsonLdNode | undefined): Rating | undefined {
+/**
+ * The reader score from a `Book` node's `aggregateRating`.
+ *
+ * @param {Readonly<JsonLdNode> | undefined} node The `Book` node.
+ * @returns {Rating | undefined} The score, or `undefined` for an unrated book.
+ */
+function readRating(node: Readonly<JsonLdNode> | undefined): Rating | undefined {
   const aggregate = node?.["aggregateRating"];
   if (typeof aggregate !== "object" || aggregate === null) return undefined;
   const rating = aggregate as JsonLdNode;
@@ -71,6 +93,52 @@ function readRating(node: JsonLdNode | undefined): Rating | undefined {
     parseDecimal(ldString(rating, "bestRating")) ?? 10,
     parseCount(ldString(rating, "ratingCount")),
   );
+}
+
+/**
+ * One search result card, or `undefined` when it lacks a title or a book path.
+ *
+ * @param {HTMLElement} card A `div.book-card`.
+ * @param {string} baseUrl Site root the card's link is relative to.
+ * @returns {BookMatch | undefined} The match.
+ */
+function readCard(card: HTMLElement, baseUrl: string): BookMatch | undefined {
+  const link = card.querySelector(RESULT_TITLE_SELECTOR);
+  const href = link?.getAttribute("href");
+  const id = href?.replace(/^\/ksiazka\//, "").replace(/\/$/, "");
+  const title = link?.text.replaceAll(/\s+/g, " ").trim();
+  if (!id || !title || !PATH_ID.test(id)) return undefined;
+  return {
+    title,
+    authors: uniqueStrings(
+      card.querySelectorAll(RESULT_AUTHOR_SELECTOR).map((author) => author.text.trim()),
+    ),
+    id,
+    language: "polski",
+    url: `${baseUrl}${href}`,
+    rating: toRating(
+      parseDecimal(selectText(card, RESULT_RATING_SELECTOR)),
+      10,
+      parseCount(selectText(card, RESULT_RATING_TEXT_SELECTOR)),
+    ),
+  };
+}
+
+/**
+ * The series a book belongs to, with its position when the page gives one.
+ *
+ * @param {HTMLElement} page The book page.
+ * @param {Readonly<JsonLdNode>} node The page's `Book` node.
+ * @returns {string | undefined} Such as `Kroniki Diuny (1)`.
+ */
+function seriesOf(page: HTMLElement, node: Readonly<JsonLdNode>): string | undefined {
+  const series = jsonLd(page, "BookSeries") ?? node["isPartOfSeries"];
+  const seriesNode =
+    typeof series === "object" && series !== null ? (series as JsonLdNode) : undefined;
+  const name = ldString(seriesNode, "name");
+  const position = ldString(seriesNode, "position");
+  if (!name) return undefined;
+  return position ? `${name} (${position})` : name;
 }
 
 class Lubimyczytac extends Provider {
@@ -89,6 +157,8 @@ class Lubimyczytac extends Provider {
    * `isbn` is false because the site's search box matches titles and authors: handed a number it
    * answers with unrelated books rather than with nothing, which is worse than admitting it
    * cannot do this.
+   *
+   * @returns {ProviderCapabilities} The capability flags.
    */
   get capabilities(): ProviderCapabilities {
     return {
@@ -107,31 +177,12 @@ class Lubimyczytac extends Provider {
     const page = parseHtml(await this.getText(url));
     const limit = clampMaxResults(options?.limit, MAX_RESULTS);
     const matches: BookMatch[] = [];
-
     for (const card of page.querySelectorAll(RESULT_SELECTOR)) {
-      const link = card.querySelector(RESULT_TITLE_SELECTOR);
-      const href = link?.getAttribute("href");
-      const id = href?.replace(/^\/ksiazka\//, "").replace(/\/$/, "");
-      const title = link?.text.replace(/\s+/g, " ").trim();
-      if (!id || !title || !PATH_ID.test(id)) continue;
-
-      matches.push({
-        title,
-        authors: uniqueStrings(
-          card.querySelectorAll(RESULT_AUTHOR_SELECTOR).map((author) => author.text.trim()),
-        ),
-        id,
-        language: "polski",
-        url: `${this.baseUrl}${href}`,
-        rating: toRating(
-          parseDecimal(selectText(card, RESULT_RATING_SELECTOR)),
-          10,
-          parseCount(selectText(card, RESULT_RATING_TEXT_SELECTOR)),
-        ),
-      });
+      const match = readCard(card, this.baseUrl);
+      if (!match) continue;
+      matches.push(match);
       if (matches.length >= limit) break;
     }
-
     return matches;
   }
 
@@ -148,11 +199,6 @@ class Lubimyczytac extends Provider {
     const url = `${this.baseUrl}/ksiazka/${id}`;
     const page = parseHtml(await this.getText(url));
     const node = requireJsonLd(page, "Book", Lubimyczytac.key, url);
-    const series = jsonLd(page, "BookSeries") ?? node["isPartOfSeries"];
-    const seriesNode =
-      typeof series === "object" && series !== null ? (series as JsonLdNode) : undefined;
-    const seriesName = ldString(seriesNode, "name");
-    const seriesPosition = ldString(seriesNode, "position");
     const published = ldString(node, "datePublished");
     const description = selectText(page, DESCRIPTION_SELECTOR);
 
@@ -166,11 +212,7 @@ class Lubimyczytac extends Provider {
       pages: parseCount(ldString(node, "numberOfPages")),
       languages: uniqueStrings([ldString(node, "inLanguage")]),
       subjects: uniqueStrings([categoryFromUrl(ldString(node, "genre"))]),
-      series: seriesName
-        ? seriesPosition
-          ? `${seriesName} (${seriesPosition})`
-          : seriesName
-        : undefined,
+      series: seriesOf(page, node),
       description: description ? normalizeText(description) : undefined,
       cover: ldString(node, "image"),
       rating: readRating(node),
@@ -180,7 +222,14 @@ class Lubimyczytac extends Provider {
     };
   }
 
-  /** First search hit for a title query, since a book page can only be reached by its path. */
+  /**
+   * First search hit for a title query, since a book page can only be reached by its path.
+   *
+   * @param {BookQuery} query A checked book query.
+   * @returns {Promise<string>} The site path of the first hit.
+   * @throws {UnsupportedOperationError} When the query carries only an ISBN.
+   * @throws {NotFoundError} When the search finds nothing.
+   */
   private async searchId(query: BookQuery): Promise<string> {
     if (!query.title) {
       throw new UnsupportedOperationError("isbn", Lubimyczytac.key);

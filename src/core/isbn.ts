@@ -9,15 +9,25 @@
 
 import { InvalidInputError } from "./errors.ts";
 
-/** Strip separators and the literal "ISBN" label; digits and a trailing `X` survive. */
+/**
+ * Strip separators and the literal "ISBN" label; digits and a trailing `X` survive.
+ *
+ * @param {string} value ISBN as printed or typed.
+ * @returns {string} The bare digits, with a trailing `X` kept.
+ */
 export function normalizeIsbn(value: string): string {
   return value
     .toUpperCase()
-    .replace(/ISBN(?:-1[03])?:?/g, "")
-    .replace(/[^0-9X]/g, "");
+    .replaceAll(/ISBN(?:-1[03])?:?/g, "")
+    .replaceAll(/[^0-9X]/g, "");
 }
 
-/** True when `value` is a well-formed ISBN-10, check digit included. */
+/**
+ * True when `value` is a well-formed ISBN-10, check digit included.
+ *
+ * @param {string} value ISBN in any printed form.
+ * @returns {boolean} Whether it's a valid ISBN-10.
+ */
 export function isIsbn10(value: string): boolean {
   const isbn = normalizeIsbn(value);
   if (!/^\d{9}[\dX]$/.test(isbn)) return false;
@@ -29,7 +39,12 @@ export function isIsbn10(value: string): boolean {
   return sum % 11 === 0;
 }
 
-/** True when `value` is a well-formed ISBN-13, check digit included. */
+/**
+ * True when `value` is a well-formed ISBN-13, check digit included.
+ *
+ * @param {string} value ISBN in any printed form.
+ * @returns {boolean} Whether it's a valid ISBN-13.
+ */
 export function isIsbn13(value: string): boolean {
   const isbn = normalizeIsbn(value);
   if (!/^\d{13}$/.test(isbn)) return false;
@@ -40,7 +55,12 @@ export function isIsbn13(value: string): boolean {
   return sum % 10 === 0;
 }
 
-/** True when `value` is a valid ISBN in either length. */
+/**
+ * True when `value` is a valid ISBN in either length.
+ *
+ * @param {string} value ISBN in any printed form.
+ * @returns {boolean} Whether it's a valid ISBN-10 or ISBN-13.
+ */
 export function isIsbn(value: string): boolean {
   return isIsbn10(value) || isIsbn13(value);
 }
@@ -48,6 +68,8 @@ export function isIsbn(value: string): boolean {
 /**
  * Convert a valid ISBN-10 to its ISBN-13 form.
  *
+ * @param {string} value ISBN-10 in any printed form.
+ * @returns {string} The 13-digit form.
  * @throws {InvalidInputError} When `value` is not a valid ISBN-10.
  */
 export function isbn10To13(value: string): string {
@@ -68,7 +90,8 @@ export function isbn10To13(value: string): string {
  *
  * Only the `978` range has one; a `979` number cannot be written in ten digits.
  *
- * @returns The ISBN-10, or `undefined` for a `979` number.
+ * @param {string} value ISBN-13 in any printed form.
+ * @returns {string | undefined} The ISBN-10, or `undefined` for a `979` number.
  * @throws {InvalidInputError} When `value` is not a valid ISBN-13.
  */
 export function isbn13To10(value: string): string | undefined {
@@ -86,7 +109,12 @@ export function isbn13To10(value: string): string | undefined {
   return `${body}${check === 10 ? "X" : check}`;
 }
 
-/** Normalize any valid ISBN to its 13-digit form, or `undefined` when it is not one. */
+/**
+ * Normalize any valid ISBN to its 13-digit form.
+ *
+ * @param {string | undefined} value ISBN in any printed form, or nothing.
+ * @returns {string | undefined} The 13-digit form, or `undefined` when `value` isn't a valid ISBN.
+ */
 export function toIsbn13(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const isbn = normalizeIsbn(value);
@@ -95,7 +123,12 @@ export function toIsbn13(value: string | undefined): string | undefined {
   return undefined;
 }
 
-/** Return the 10-digit form when `value` is one, otherwise `undefined`. */
+/**
+ * Return the 10-digit form when `value` is one.
+ *
+ * @param {string | undefined} value ISBN in any printed form, or nothing.
+ * @returns {string | undefined} The normalized ISBN-10, or `undefined` when `value` isn't one.
+ */
 export function toIsbn10(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const isbn = normalizeIsbn(value);
@@ -109,6 +142,9 @@ export function toIsbn10(value: string | undefined): string | undefined {
  * they are handed, so validating here is what keeps a typo from returning a plausible record
  * for the wrong title.
  *
+ * @param {string} value ISBN as the caller supplied it.
+ * @param {string} [provider] Provider named in the error.
+ * @returns {string} The normalized ISBN.
  * @throws {InvalidInputError} When `value` is not a valid ISBN-10 or ISBN-13.
  */
 export function assertIsbn(value: string, provider?: string): string {

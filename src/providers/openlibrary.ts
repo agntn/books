@@ -17,6 +17,7 @@ import type {
   BookQuery,
   ProviderCapabilities,
   ProviderConfig,
+  Rating,
   SearchOptions,
   TextMatch,
   TextSearchOptions,
@@ -73,76 +74,87 @@ const SCAN_ID = /^[\w-][\w.-]*$/;
 const RATING_SCALE = 5;
 
 /** A blurb is either a string or a typed text node, depending on the record's age. */
-type OpenLibraryText = string | { value?: string };
+type OpenLibraryText = string | Readonly<{ value?: string }>;
+
+/** A reference to another record: `{ "key": "/authors/OL79034A" }`. */
+type KeyRef = Readonly<{ key?: string }>;
 
 interface OpenLibrarySearchDocument {
-  key?: string;
-  title?: string;
-  author_name?: string[];
-  first_publish_year?: number;
-  isbn?: string[];
-  language?: string[];
-  cover_i?: number;
-  ratings_average?: number;
-  ratings_count?: number;
+  readonly key?: string;
+  readonly title?: string;
+  readonly author_name?: readonly string[];
+  readonly first_publish_year?: number;
+  readonly isbn?: readonly string[];
+  readonly language?: readonly string[];
+  readonly cover_i?: number;
+  readonly ratings_average?: number;
+  readonly ratings_count?: number;
 }
 
 interface OpenLibrarySearchResponse {
-  numFound?: number;
-  docs?: OpenLibrarySearchDocument[];
+  readonly numFound?: number;
+  readonly docs?: readonly OpenLibrarySearchDocument[];
+}
+
+/** The metadata of a full-text hit, each field a one-element array. */
+interface OpenLibraryInsideFields {
+  readonly identifier?: readonly string[];
+  readonly meta_title?: readonly string[];
+  readonly meta_creator?: readonly string[];
+  readonly meta_year?: readonly number[];
+  readonly page_num?: readonly (readonly number[])[];
 }
 
 /** One hit of `/search/inside.json`; the metadata fields arrive as one-element arrays. */
 interface OpenLibraryInsideHit {
-  fields?: {
-    identifier?: string[];
-    meta_title?: string[];
-    meta_creator?: string[];
-    meta_year?: number[];
-    page_num?: number[][];
-  };
-  highlight?: { text?: string[] };
+  readonly fields?: OpenLibraryInsideFields;
+  readonly highlight?: Readonly<{ text?: readonly string[] }>;
+}
+
+interface OpenLibraryInsideHits {
+  readonly total?: number | Readonly<{ value?: number }>;
+  readonly hits?: readonly OpenLibraryInsideHit[];
 }
 
 interface OpenLibraryInsideResponse {
-  hits?: { total?: number | { value?: number }; hits?: OpenLibraryInsideHit[] };
+  readonly hits?: OpenLibraryInsideHits;
 }
 
 interface OpenLibraryEdition {
-  key?: string;
-  title?: string;
-  subtitle?: string;
-  publishers?: string[];
-  publish_date?: string;
-  number_of_pages?: number;
-  isbn_10?: string[];
-  isbn_13?: string[];
-  languages?: { key?: string }[];
-  covers?: number[];
-  series?: string[];
-  subjects?: string[];
-  description?: OpenLibraryText;
-  works?: { key?: string }[];
-  authors?: { key?: string }[];
+  readonly key?: string;
+  readonly title?: string;
+  readonly subtitle?: string;
+  readonly publishers?: readonly string[];
+  readonly publish_date?: string;
+  readonly number_of_pages?: number;
+  readonly isbn_10?: readonly string[];
+  readonly isbn_13?: readonly string[];
+  readonly languages?: readonly KeyRef[];
+  readonly covers?: readonly number[];
+  readonly series?: readonly string[];
+  readonly subjects?: readonly string[];
+  readonly description?: OpenLibraryText;
+  readonly works?: readonly KeyRef[];
+  readonly authors?: readonly KeyRef[];
 }
 
 interface OpenLibraryWork {
-  key?: string;
-  title?: string;
-  subjects?: string[];
-  description?: OpenLibraryText;
-  covers?: number[];
-  first_publish_date?: string;
-  authors?: { author?: { key?: string } }[];
+  readonly key?: string;
+  readonly title?: string;
+  readonly subjects?: readonly string[];
+  readonly description?: OpenLibraryText;
+  readonly covers?: readonly number[];
+  readonly first_publish_date?: string;
+  readonly authors?: readonly Readonly<{ author?: KeyRef }>[];
 }
 
 interface OpenLibraryRatings {
-  summary?: { average?: number | null; count?: number | null };
+  readonly summary?: Readonly<{ average?: number | null; count?: number | null }>;
 }
 
 interface OpenLibraryAuthor {
-  name?: string;
-  personal_name?: string;
+  readonly name?: string;
+  readonly personal_name?: string;
 }
 
 /** Open Library record keys, as they appear in a response: `/works/OL893414W`, `/authors/OL79034A`. */
@@ -156,6 +168,9 @@ const RECORD_KEY = /^\/?(works|books|authors)\/(OL\d+[AMW])$/;
  * send this library's request to a different resource on the same host - answered, parsed, and
  * returned as if it were a book. Types cannot see that; a shape check can.
  *
+ * @param {string | undefined} key A record key from a response.
+ * @param {string} provider Provider named in the error.
+ * @returns {string} The path, such as `works/OL893414W`.
  * @throws {ParseError} When the key does not have the documented shape.
  */
 function recordPath(key: string | undefined, provider: string): string {
@@ -166,34 +181,64 @@ function recordPath(key: string | undefined, provider: string): string {
   return `${match[1]}/${match[2]}`;
 }
 
-/** Author keys an edition names directly. */
+/**
+ * Author keys an edition names directly.
+ *
+ * @param {OpenLibraryEdition | undefined} edition The edition record.
+ * @returns {string[]} The author keys.
+ */
 function editionAuthorKeys(edition: OpenLibraryEdition | undefined): string[] {
   return (edition?.authors ?? []).map((author) => author.key).filter((key) => key !== undefined);
 }
 
-/** Author keys a work names, one nesting level deeper than an edition's. */
+/**
+ * Author keys a work names, one nesting level deeper than an edition's.
+ *
+ * @param {OpenLibraryWork | undefined} work The work record.
+ * @returns {string[]} The author keys.
+ */
 function workAuthorKeys(work: OpenLibraryWork | undefined): string[] {
   return (work?.authors ?? []).map((entry) => entry.author?.key).filter((key) => key !== undefined);
 }
 
-/** Unwrap a description that may be a bare string or a `/type/text` node. */
+/**
+ * Unwrap a description that may be a bare string or a `/type/text` node.
+ *
+ * @param {OpenLibraryText | undefined} value The description.
+ * @returns {string | undefined} The normalized text.
+ */
 function readText(value: OpenLibraryText | undefined): string | undefined {
   const text = typeof value === "string" ? value : value?.value;
   return text ? normalizeText(text) : undefined;
 }
 
-/** `/works/OL893414W` and `OL893414W` both name the same record. */
+/**
+ * `/works/OL893414W` and `OL893414W` both name the same record.
+ *
+ * @param {string | undefined} key A record key or a bare id.
+ * @returns {string | undefined} The bare id.
+ */
 function keyId(key: string | undefined): string | undefined {
   return key?.split("/").filter(Boolean).pop();
 }
 
-/** `/languages/eng` carries the code in its last segment. */
-function languageCodes(languages: { key?: string }[] | undefined): string[] {
+/**
+ * `/languages/eng` carries the code in its last segment.
+ *
+ * @param {readonly KeyRef[] | undefined} languages Language references.
+ * @returns {string[]} The language codes.
+ */
+function languageCodes(languages: readonly KeyRef[] | undefined): string[] {
   return uniqueStrings((languages ?? []).map((language) => keyId(language.key)));
 }
 
-/** First ISBN of a search match that passes its check digit, preferred in 13-digit form. */
-function pickIsbn(isbns: string[] | undefined): string | undefined {
+/**
+ * First ISBN of a search match that passes its check digit, preferred in 13-digit form.
+ *
+ * @param {readonly string[] | undefined} isbns ISBNs the search index lists.
+ * @returns {string | undefined} The first valid one, as ISBN-13.
+ */
+function pickIsbn(isbns: readonly string[] | undefined): string | undefined {
   for (const isbn of isbns ?? []) {
     const isbn13 = toIsbn13(isbn);
     if (isbn13) return isbn13;
@@ -201,31 +246,243 @@ function pickIsbn(isbns: string[] | undefined): string | undefined {
   return undefined;
 }
 
-/** The scan a full-text hit belongs to, or `undefined` for a hit without a usable identifier. */
+/**
+ * Title, authors, year and page of a scan, unwrapped from their one-element arrays.
+ *
+ * @param {OpenLibraryInsideFields} fields The hit's metadata.
+ * @returns {Pick<TextMatch, "title" | "authors" | "year" | "page">} The scan's details.
+ */
+function scanDetails(
+  fields: OpenLibraryInsideFields,
+): Pick<TextMatch, "title" | "authors" | "year" | "page"> {
+  const title = fields.meta_title?.[0];
+  return {
+    title: title ? normalizeText(title) : undefined,
+    authors: uniqueStrings(fields.meta_creator ?? []),
+    year: fields.meta_year?.[0],
+    page: fields.page_num?.[0]?.[0],
+  };
+}
+
+/**
+ * The scan a full-text hit belongs to.
+ *
+ * @param {OpenLibraryInsideHit} hit One hit.
+ * @param {string} query The phrase, for the reader link.
+ * @returns {TextMatch | undefined} The match, or `undefined` for a hit without a usable identifier.
+ */
 function toTextMatch(hit: OpenLibraryInsideHit, query: string): TextMatch | undefined {
   const fields = hit.fields ?? {};
   const id = fields.identifier?.[0];
   if (!id || !SCAN_ID.test(id)) return undefined;
+  const { title, authors, year, page } = scanDetails(fields);
   return {
     id,
-    title: fields.meta_title?.[0] ? normalizeText(fields.meta_title[0]) : undefined,
-    authors: uniqueStrings(fields.meta_creator ?? []),
-    year: fields.meta_year?.[0],
-    page: fields.page_num?.[0]?.[0],
+    title,
+    authors,
+    year,
+    page,
     snippets: (hit.highlight?.text ?? []).map((snippet) => snippet.trim()).filter(Boolean),
     url: `https://archive.org/details/${id}${buildQuery({ q: `"${query}"` })}`,
   };
 }
 
-/** `hits.total` is a number here, and an object in newer Elasticsearch responses. */
-function hitTotal(hits: OpenLibraryInsideResponse["hits"]): number {
-  const total = hits?.total;
+/**
+ * `hits.total` is a number here, and an object in newer Elasticsearch responses.
+ *
+ * @param {OpenLibraryInsideHits} hits The response's `hits`.
+ * @returns {number} The number of hits, 0 when it's missing.
+ */
+function hitTotal(hits: OpenLibraryInsideHits): number {
+  const total = hits.total;
   return (typeof total === "number" ? total : total?.value) ?? 0;
 }
 
-/** A caller's number, or `fallback` when it is missing, `NaN` or infinite. */
+/**
+ * A caller's number, or `fallback` when it is missing, `NaN` or infinite.
+ *
+ * @param {number | undefined} value The number the caller passed.
+ * @param {number} fallback The default.
+ * @returns {number} The number, or the default.
+ */
 function finiteOr(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * The scan id a text search is narrowed to.
+ *
+ * @param {TextSearchOptions} [options] The caller's options.
+ * @returns {string | undefined} The trimmed id, or `undefined` when the search isn't narrowed.
+ * @throws {InvalidInputError} When the id isn't an archive.org identifier.
+ */
+function scanFilter(options?: TextSearchOptions): string | undefined {
+  const book = options?.book?.trim() || undefined;
+  if (book && !SCAN_ID.test(book)) {
+    throw new InvalidInputError(
+      "book must be the id of a text search match: letters, digits, '.', '-' and '_'",
+      OpenLibrary.key,
+    );
+  }
+  return book;
+}
+
+/** Which pages of hits a text search reads, and how many hits each holds. */
+interface HitWindow {
+  readonly first: number;
+  readonly pages: number;
+  readonly limit: number;
+}
+
+/**
+ * The pages a text search reads: one for an open search, up to `maxPages` when looking for a scan.
+ *
+ * @param {string | undefined} book The scan the search is narrowed to.
+ * @param {TextSearchOptions} [options] The caller's options.
+ * @returns {HitWindow} The first page, the page count and the hits per page.
+ */
+function hitWindow(book: string | undefined, options?: TextSearchOptions): HitWindow {
+  const limit = clampMaxResults(
+    finiteOr(options?.limit, book ? MAX_TEXT_SEARCH_RESULTS : TEXT_SEARCH_RESULTS),
+    MAX_TEXT_SEARCH_RESULTS,
+  );
+  const pages = book
+    ? clampMaxResults(finiteOr(options?.maxPages, DEFAULT_TEXT_SEARCH_PAGES), MAX_TEXT_SEARCH_PAGES)
+    : 1;
+  return { first: Math.max(1, Math.round(finiteOr(options?.page, 1))), pages, limit };
+}
+
+/** The records a lookup found, and what is still to fetch for them. */
+interface Lookup {
+  readonly workKey?: string;
+  readonly authorKeys: readonly string[];
+}
+
+/**
+ * The work key and the author keys known before the second wave of requests.
+ *
+ * @param {OpenLibraryEdition | undefined} edition The edition, when the query named one.
+ * @param {OpenLibraryWork | undefined} work The work, when `locate` fetched it.
+ * @returns {Lookup} The work to fetch and the authors to resolve.
+ */
+function lookupOf(edition?: OpenLibraryEdition, work?: OpenLibraryWork): Lookup {
+  const editionAuthors = editionAuthorKeys(edition);
+  return {
+    workKey: work?.key ?? edition?.works?.[0]?.key,
+    authorKeys: editionAuthors.length > 0 ? editionAuthors : workAuthorKeys(work),
+  };
+}
+
+/**
+ * Both ISBNs of an edition; the 13-digit one falls back to converting the ten.
+ *
+ * @param {OpenLibraryEdition} edition The edition record.
+ * @returns {Pick<Book, "isbn10" | "isbn13">} The ISBNs.
+ */
+function isbnsOf(edition: OpenLibraryEdition): Pick<Book, "isbn10" | "isbn13"> {
+  return {
+    isbn10: toIsbn10(edition.isbn_10?.[0]),
+    isbn13: toIsbn13(edition.isbn_13?.[0] ?? edition.isbn_10?.[0]),
+  };
+}
+
+/** The fields only an edition carries. */
+type Imprint = Pick<
+  Book,
+  "subtitle" | "published" | "publisher" | "pages" | "languages" | "series"
+>;
+
+/**
+ * What only the edition knows: the printing's subtitle, date, publisher, length and languages.
+ *
+ * @param {OpenLibraryEdition} edition The edition record.
+ * @returns {Imprint} The edition's own fields.
+ */
+function imprintOf(edition: OpenLibraryEdition): Imprint {
+  return {
+    subtitle: edition.subtitle,
+    published: edition.publish_date,
+    publisher: edition.publishers?.[0],
+    pages: edition.number_of_pages,
+    languages: languageCodes(edition.languages),
+    series: edition.series?.[0],
+  };
+}
+
+/**
+ * Subjects and blurb, the work's first and the edition's after.
+ *
+ * @param {OpenLibraryEdition} edition The edition record.
+ * @param {OpenLibraryWork} work The work record.
+ * @returns {Pick<Book, "subjects" | "description">} The edition's own fields.
+ */
+function aboutOf(
+  edition: OpenLibraryEdition,
+  work: OpenLibraryWork,
+): Pick<Book, "subjects" | "description"> {
+  return {
+    subjects: uniqueStrings([...(work.subjects ?? []), ...(edition.subjects ?? [])]).slice(
+      0,
+      MAX_SUBJECTS,
+    ),
+    description: readText(work.description ?? edition.description),
+  };
+}
+
+/**
+ * The large cover image, the edition's before the work's.
+ *
+ * @param {OpenLibraryEdition} edition The edition record.
+ * @param {OpenLibraryWork} work The work record.
+ * @returns {string | undefined} The image URL.
+ */
+function coverOf(edition: OpenLibraryEdition, work: OpenLibraryWork): string | undefined {
+  const cover = edition.covers?.[0] ?? work.covers?.[0];
+  return cover === undefined ? undefined : `${COVERS_BASE_URL}/b/id/${cover}-L.jpg`;
+}
+
+/** Everything a record is stitched from. */
+interface Sources {
+  readonly edition: OpenLibraryEdition;
+  readonly work: OpenLibraryWork;
+  readonly rating?: Readonly<Rating>;
+  readonly authors: readonly string[];
+}
+
+/**
+ * Stitch a record from an edition and its work, the edition winning where both have a field.
+ *
+ * @param {Sources} sources The records and what was resolved for them.
+ * @param {string} baseUrl Site root for the record link.
+ * @returns {Book} The record.
+ */
+function toBook(sources: Sources, baseUrl: string): Book {
+  const { edition, work } = sources;
+  const imprint = imprintOf(edition);
+  const isbns = isbnsOf(edition);
+  const about = aboutOf(edition, work);
+  const canonicalKey = edition.key ?? work.key;
+  return {
+    provider: OpenLibrary.key,
+    title: edition.title ?? work.title ?? "",
+    subtitle: imprint.subtitle,
+    authors: [...sources.authors],
+    year: parseYear(edition.publish_date ?? work.first_publish_date),
+    published: imprint.published,
+    publisher: imprint.publisher,
+    isbn10: isbns.isbn10,
+    isbn13: isbns.isbn13,
+    pages: imprint.pages,
+    languages: imprint.languages,
+    subjects: about.subjects,
+    series: imprint.series,
+    description: about.description,
+    cover: coverOf(edition, work),
+    rating: sources.rating,
+    id: keyId(canonicalKey),
+    url: canonicalKey ? `${baseUrl}${canonicalKey}` : undefined,
+    attribution: "Catalog data from Open Library (openlibrary.org)",
+  };
 }
 
 class OpenLibrary extends Provider {
@@ -269,44 +526,24 @@ class OpenLibrary extends Provider {
     }));
   }
 
-  /** Find a phrase; with `book`, read pages until that scan shows up or `maxPages` run out. */
+  /**
+   * Find a phrase; with `book`, read pages until that scan shows up or `maxPages` run out.
+   *
+   * @param {string} query The phrase.
+   * @param {TextSearchOptions} [options] Page, hits per page, and the scan to look for.
+   * @returns {Promise<TextSearchResult>} The matches on the last page read.
+   */
   override async searchText(query: string, options?: TextSearchOptions): Promise<TextSearchResult> {
     assertQuery(query, OpenLibrary.key);
     const phrase = query.trim();
-    const book = options?.book?.trim() || undefined;
-    if (book && !SCAN_ID.test(book)) {
-      throw new InvalidInputError(
-        "book must be the id of a text search match: letters, digits, '.', '-' and '_'",
-        OpenLibrary.key,
-      );
-    }
-
-    const limit = clampMaxResults(
-      finiteOr(options?.limit, book ? MAX_TEXT_SEARCH_RESULTS : TEXT_SEARCH_RESULTS),
-      MAX_TEXT_SEARCH_RESULTS,
-    );
-    const pages = book
-      ? clampMaxResults(
-          finiteOr(options?.maxPages, DEFAULT_TEXT_SEARCH_PAGES),
-          MAX_TEXT_SEARCH_PAGES,
-        )
-      : 1;
-    const first = Math.max(1, Math.round(finiteOr(options?.page, 1)));
+    const book = scanFilter(options);
+    const { first, pages, limit } = hitWindow(book, options);
 
     let page = first;
     let total = 0;
     let matches: TextMatch[] = [];
     for (; page < first + pages; page += 1) {
-      const url = `${this.baseUrl}/search/inside.json${buildQuery({ q: phrase, page, limit })}`;
-      const data = await this.getJSON<OpenLibraryInsideResponse>(url, TEXT_SEARCH_TIMEOUT_MS);
-      if (!data.hits) {
-        throw new ParseError("full-text search answered without hits", OpenLibrary.key);
-      }
-      total = hitTotal(data.hits);
-      const found = (data.hits.hits ?? [])
-        .map((hit) => toTextMatch(hit, phrase))
-        .filter((match) => match !== undefined);
-      matches = book ? found.filter((match) => match.id === book) : found;
+      ({ total, matches } = await this.hitPage(phrase, page, limit, book));
       if (matches.length > 0 || !book || page * limit >= total) break;
     }
 
@@ -323,64 +560,69 @@ class OpenLibrary extends Provider {
   }
 
   /**
+   * One page of full-text hits, narrowed to one scan when `book` names it.
+   *
+   * @param {string} phrase The phrase.
+   * @param {number} page Page of hits, from 1.
+   * @param {number} limit Hits per page.
+   * @param {string | undefined} book The scan to keep, or `undefined` to keep every hit.
+   * @returns {Promise<{ total: number; matches: TextMatch[] }>} The hit count and the matches kept.
+   * @throws {ParseError} When the response carries no `hits`.
+   */
+  private async hitPage(
+    phrase: string,
+    page: number,
+    limit: number,
+    book: string | undefined,
+  ): Promise<{ total: number; matches: TextMatch[] }> {
+    const url = `${this.baseUrl}/search/inside.json${buildQuery({ q: phrase, page, limit })}`;
+    const data = await this.getJSON<OpenLibraryInsideResponse>(url, TEXT_SEARCH_TIMEOUT_MS);
+    if (!data.hits) {
+      throw new ParseError("full-text search answered without hits", OpenLibrary.key);
+    }
+    const found = (data.hits.hits ?? [])
+      .map((hit) => toTextMatch(hit, phrase))
+      .filter((match) => match !== undefined);
+    return {
+      total: hitTotal(data.hits),
+      matches: book ? found.filter((match) => match.id === book) : found,
+    };
+  }
+
+  /**
    * Fetch one record, stitched from an edition and its work.
    *
    * Author keys are known up front whenever the edition lists them, or whenever `locate` already
    * fetched the work. Resolving those in the same wave as the work and its ratings is what keeps
    * a title lookup at three round trips instead of four; only an edition that names no authors
    * of its own needs the extra one.
+   *
+   * @param {BookQuery} query The book to look up.
+   * @returns {Promise<Book>} The record.
    */
   async book(query: BookQuery): Promise<Book> {
     const checked = assertBookQuery(query, OpenLibrary.key);
     const { edition, work: found } = await this.locate(checked);
+    const { workKey, authorKeys } = lookupOf(edition, found);
 
-    const workKey = found?.key ?? edition?.works?.[0]?.key;
-    const knownAuthorKeys = editionAuthorKeys(edition).length
-      ? editionAuthorKeys(edition)
-      : workAuthorKeys(found);
-
-    const [work, ratings, knownAuthors] = await Promise.all([
+    const [work, rating, knownAuthors] = await Promise.all([
       found ?? (workKey ? this.fetchOptionalWork(workKey, edition !== undefined) : undefined),
       workKey ? this.fetchRatings(workKey) : undefined,
-      knownAuthorKeys.length > 0 ? this.fetchAuthors(knownAuthorKeys) : undefined,
+      authorKeys.length > 0 ? this.fetchAuthors(authorKeys) : undefined,
     ]);
-
     const authors = knownAuthors ?? (await this.fetchAuthors(workAuthorKeys(work)));
 
-    const isbn13 = toIsbn13(edition?.isbn_13?.[0] ?? edition?.isbn_10?.[0]);
-    const cover = edition?.covers?.[0] ?? work?.covers?.[0];
-    const canonicalKey = edition?.key ?? work?.key;
-
-    return {
-      provider: OpenLibrary.key,
-      title: edition?.title ?? work?.title ?? "",
-      subtitle: edition?.subtitle,
-      authors,
-      year: parseYear(edition?.publish_date ?? work?.first_publish_date),
-      published: edition?.publish_date,
-      publisher: edition?.publishers?.[0],
-      isbn10: toIsbn10(edition?.isbn_10?.[0]),
-      isbn13,
-      pages: edition?.number_of_pages,
-      languages: languageCodes(edition?.languages),
-      subjects: uniqueStrings([...(work?.subjects ?? []), ...(edition?.subjects ?? [])]).slice(
-        0,
-        MAX_SUBJECTS,
-      ),
-      series: edition?.series?.[0],
-      description: readText(work?.description ?? edition?.description),
-      cover: cover === undefined ? undefined : `${COVERS_BASE_URL}/b/id/${cover}-L.jpg`,
-      rating: ratings,
-      id: keyId(canonicalKey),
-      url: canonicalKey ? `${this.baseUrl}${canonicalKey}` : undefined,
-      attribution: "Catalog data from Open Library (openlibrary.org)",
-    };
+    return toBook({ edition: edition ?? {}, work: work ?? {}, rating, authors }, this.baseUrl);
   }
 
   /**
    * Find the edition or work a query names, in one request where the catalog allows one.
    *
    * `/isbn/{isbn}` answers a redirect to the edition record, which `fetch` follows.
+   *
+   * @param {BookQuery} query A checked book query.
+   * @returns {Promise<{ edition?: OpenLibraryEdition; work?: OpenLibraryWork }>} The record found.
+   * @throws {NotFoundError} When a title search finds nothing.
    */
   private async locate(
     query: BookQuery,
@@ -390,22 +632,7 @@ class OpenLibrary extends Provider {
         edition: await this.getJSON<OpenLibraryEdition>(`${this.baseUrl}/isbn/${query.isbn}.json`),
       };
     }
-
-    if (query.id) {
-      const id = keyId(query.id)?.toUpperCase() ?? "";
-      if (/^OL\d+M$/.test(id)) {
-        return {
-          edition: await this.getJSON<OpenLibraryEdition>(`${this.baseUrl}/books/${id}.json`),
-        };
-      }
-      if (/^OL\d+W$/.test(id)) {
-        return { work: await this.fetchWork(`/works/${id}`) };
-      }
-      throw new InvalidInputError(
-        `id must be an Open Library work (OL…W) or edition (OL…M) key, got "${query.id}"`,
-        OpenLibrary.key,
-      );
-    }
+    if (query.id) return this.locateId(query.id);
 
     const url = `${this.baseUrl}/search.json${buildQuery({
       title: query.title,
@@ -425,6 +652,31 @@ class OpenLibrary extends Provider {
   }
 
   /**
+   * Fetch the edition or work an Open Library id names.
+   *
+   * @param {string} id An `OL…M` or `OL…W` id, bare or as a key.
+   * @returns {Promise<{ edition?: OpenLibraryEdition; work?: OpenLibraryWork }>} The record.
+   * @throws {InvalidInputError} When the id is neither.
+   */
+  private async locateId(
+    id: string,
+  ): Promise<{ edition?: OpenLibraryEdition; work?: OpenLibraryWork }> {
+    const bare = keyId(id)?.toUpperCase() ?? "";
+    if (/^OL\d+M$/.test(bare)) {
+      return {
+        edition: await this.getJSON<OpenLibraryEdition>(`${this.baseUrl}/books/${bare}.json`),
+      };
+    }
+    if (/^OL\d+W$/.test(bare)) {
+      return { work: await this.fetchWork(`/works/${bare}`) };
+    }
+    throw new InvalidInputError(
+      `id must be an Open Library work (OL…W) or edition (OL…M) key, got "${id}"`,
+      OpenLibrary.key,
+    );
+  }
+
+  /**
    * The work behind an edition, or `undefined` when only the work is missing.
    *
    * An edition already carries the title, ISBN, publisher and page count; the work adds the
@@ -432,6 +684,10 @@ class OpenLibrary extends Provider {
    * the catalog is edited by the public and does go inconsistent - returning the record without
    * a blurb beats reporting a book that this catalog demonstrably holds as "not found", which
    * is also what a fallback walk would act on.
+   *
+   * @param {string} key The work key.
+   * @param {boolean} optional Whether a missing work leaves the record usable.
+   * @returns {Promise<OpenLibraryWork | undefined>} The work; `undefined` when optional and gone.
    */
   private async fetchOptionalWork(
     key: string,
@@ -447,6 +703,12 @@ class OpenLibrary extends Provider {
     }
   }
 
+  /**
+   * Fetch a work record.
+   *
+   * @param {string} key The work key.
+   * @returns {Promise<OpenLibraryWork>} The work.
+   */
   private fetchWork(key: string): Promise<OpenLibraryWork> {
     return this.getJSON<OpenLibraryWork>(
       `${this.baseUrl}/${recordPath(key, OpenLibrary.key)}.json`,
@@ -459,6 +721,9 @@ class OpenLibrary extends Provider {
    * Scores are an ornament on a bibliographic record: a work nobody has rated answers 404 here,
    * and that must not take the record down with it. A rate limit travels on instead: swallowing
    * that one would report a book as unrated when the catalog is simply refusing requests.
+   *
+   * @param {string} key The work key.
+   * @returns {Promise<Book["rating"]>} The score.
    */
   private async fetchRatings(key: string): Promise<Book["rating"]> {
     try {
@@ -476,8 +741,13 @@ class OpenLibrary extends Provider {
     }
   }
 
-  /** Resolve author keys to names, up to `MAX_AUTHOR_LOOKUPS` of them. */
-  private async fetchAuthors(keys: string[]): Promise<string[]> {
+  /**
+   * Resolve author keys to names, up to `MAX_AUTHOR_LOOKUPS` of them.
+   *
+   * @param {readonly string[]} keys Author keys.
+   * @returns {Promise<string[]>} The distinct names.
+   */
+  private async fetchAuthors(keys: readonly string[]): Promise<string[]> {
     const records = await Promise.all(
       keys
         .slice(0, MAX_AUTHOR_LOOKUPS)

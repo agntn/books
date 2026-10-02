@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { normalizeText, parseYear, trimPartialUtf8, uniqueStrings } from "../../src/core/text.ts";
 import { FAKE_TEXT_BYTES } from "../helpers.ts";
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
   AuthError,
   BooksError,
@@ -10,11 +10,11 @@ import {
   normalizeError,
 } from "../../src/core/errors.ts";
 
-/** Build the structured failure the client raises, which is what normalizeError reads. */
+/* Build the structured failure the client raises, which is what normalizeError reads. */
 function responseError(
   status: number,
   url: string,
-  headers?: Record<string, string>,
+  headers?: Readonly<Record<string, string>>,
 ): ResponseError {
   return new ResponseError(status, url, "", new Headers(headers));
 }
@@ -72,7 +72,7 @@ describe("secret redaction", () => {
 
   it("keeps rawUrl out of serialized errors", () => {
     const error = new HTTPError(500, "https://x.test", undefined, "x");
-    expect(Object.keys({ ...error })).not.toContain("rawUrl");
+    expect(Object.keys(error)).not.toContain("rawUrl");
   });
 });
 

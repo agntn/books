@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { buildQuery, getJSON, getText, readTextSlice } from "../../src/core/client.ts";
 import { NotFoundError } from "../../src/core/errors.ts";
 import { FAKE_TEXT, FAKE_TEXT_BYTES } from "../helpers.ts";
@@ -15,10 +15,10 @@ afterEach(() => {
 
 type Signal = AbortSignal | null | undefined;
 
-/** Stub fetch as undici would: an aborted signal rejects unsent, a live one reaches `respond`. */
+/* Stub fetch as undici would: an aborted signal rejects unsent, a live one reaches `respond`. */
 function stubAttempts(respond: (attempt: number, signal: Signal) => Promise<Response>) {
   let attempt = 0;
-  const fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+  const fetch = vi.fn<typeof globalThis.fetch>((_input, init) =>
     init?.signal?.aborted
       ? Promise.reject(init.signal.reason)
       : respond((attempt += 1), init?.signal),
@@ -27,14 +27,14 @@ function stubAttempts(respond: (attempt: number, signal: Signal) => Promise<Resp
   return fetch;
 }
 
-/** A request that never answers: it settles only when its signal aborts. */
+/* A request that never answers: it settles only when its signal aborts. */
 function stall(signal: Signal): Promise<Response> {
   return new Promise((_, reject) => {
     signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
   });
 }
 
-/** A connection reset `delay` milliseconds in, before any byte of a response. */
+/* A connection reset `delay` milliseconds in, before any byte of a response. */
 function reset(delay: number): Promise<Response> {
   return new Promise((_, reject) => {
     setTimeout(() => reject(new TypeError("fetch failed")), delay);

@@ -1,5 +1,5 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Provider } from "../../src/core/provider.ts";
 import type { ProviderConstructor } from "../../src/core/provider.ts";
 import { create, getDefaultURL, register } from "../../src/core/registry.ts";
@@ -54,7 +54,7 @@ async function connectTestClient(): Promise<Client> {
   return client;
 }
 
-/** Text of a tool result, which is the only thing an MCP client sees. */
+/* Text of a tool result, which is the only thing an MCP client sees. */
 function resultText(response: unknown): string {
   const content = (response as { content?: { text?: string }[] }).content;
   return (content ?? []).map((part) => part.text ?? "").join("");

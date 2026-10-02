@@ -4,15 +4,23 @@ import consola from "consola";
 import { isIsbn, normalizeIsbn } from "../core/isbn.ts";
 import type { BookQuery } from "../core/types.ts";
 
+/** Whether a numeric flag takes integers only, and the lowest value it accepts. */
+type NumericOptions = Readonly<{ integer?: boolean; min?: number }>;
+
 /**
  * Read a numeric CLI argument, or exit with a message naming the flag.
  *
  * citty has no numeric argument type, so every command would parse and validate its own.
+ *
+ * @param {string | undefined} raw The argument as typed.
+ * @param {string} flag Flag named in the error.
+ * @param {NumericOptions} [options] Integer parsing and the lowest value.
+ * @returns {number | undefined} The number, or `undefined` when the flag wasn't given.
  */
 export function parseNumericArg(
   raw: string | undefined,
   flag: string,
-  options?: { integer?: boolean; min?: number },
+  options?: NumericOptions,
 ): number | undefined {
   if (raw === undefined) return undefined;
   const value = options?.integer ? Number.parseInt(raw, 10) : Number.parseFloat(raw);
@@ -30,8 +38,13 @@ export function parseNumericArg(
  * The positional is whatever names the book: an ISBN if it parses as one, a title otherwise.
  * Nobody types `--isbn` in front of a number that is visibly an ISBN, and a title that happens
  * to be thirteen digits with a valid check digit is not a title anyone has.
+ *
+ * @param {Readonly<{ book?: string; author?: string; id?: string }>} args The parsed arguments.
+ * @returns {BookQuery} The book query.
  */
-export function toBookQuery(args: { book?: string; author?: string; id?: string }): BookQuery {
+export function toBookQuery(
+  args: Readonly<{ book?: string; author?: string; id?: string }>,
+): BookQuery {
   const book = args.book?.trim();
   if (!book) return { author: args.author, id: args.id };
   return isIsbn(book)
@@ -44,12 +57,14 @@ export function toBookQuery(args: { book?: string; author?: string; id?: string 
  *
  * Every command needs the same ending, and three copies of it drift the moment one of them
  * learns a new exit code or output shape.
+ *
+ * @param {() => Promise<void>} body The command body.
  */
 export async function runCommand(body: () => Promise<void>): Promise<void> {
   try {
     await body();
   } catch (error) {
-    consola.error(`Error: ${error instanceof Error ? error.message : error}`);
+    consola.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
 }

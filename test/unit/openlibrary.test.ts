@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { InvalidInputError, NotFoundError, ParseError } from "../../src/core/errors.ts";
 import { create } from "../../src/core/registry.ts";
-import { OPENLIBRARY_EDITION, OPENLIBRARY_WORK, stubRoutes } from "../helpers.ts";
+import { OPENLIBRARY_EDITION, OPENLIBRARY_WORK, calledUrl, stubRoutes } from "../helpers.ts";
 import "../../src/providers/openlibrary.ts";
 
 /** Search shape captured from a live `/search.json` response during the API audit. */
@@ -52,7 +52,7 @@ describe("openlibrary provider", () => {
 
     const matches = await create("openlibrary").search!("placeholder", { limit: 2 });
 
-    expect(String(fetch.mock.calls[0]?.[0])).toContain("fields=key%2Ctitle");
+    expect(calledUrl(fetch.mock.calls[0])).toContain("fields=key%2Ctitle");
     expect(matches[0]).toMatchObject({
       title: "Placeholder Novel",
       authors: ["Placeholder Herbert"],
@@ -137,7 +137,7 @@ describe("openlibrary provider", () => {
     });
 
     await expect(create("openlibrary").book({ isbn: "9780441013593" })).rejects.toThrow(ParseError);
-    expect(fetch.mock.calls.some((call) => String(call[0]).includes("admin"))).toBe(false);
+    expect(fetch.mock.calls.some((call) => calledUrl(call).includes("admin"))).toBe(false);
   });
 
   it("keeps an edition's record when its work is missing", async () => {
@@ -172,7 +172,7 @@ describe("openlibrary provider", () => {
   });
 });
 
-/** One `/search/inside.json` hit in the live shape: one-element arrays and nested page numbers. */
+/* One `/search/inside.json` hit in the live shape: one-element arrays and nested page numbers. */
 function insideHit(identifier: string, snippet: string) {
   return {
     fields: {
@@ -186,7 +186,7 @@ function insideHit(identifier: string, snippet: string) {
   };
 }
 
-function insidePage(total: number, ...hits: ReturnType<typeof insideHit>[]) {
+function insidePage(total: number, ...hits: readonly unknown[]) {
   return { body: { hits: { total, hits } } };
 }
 
@@ -201,7 +201,7 @@ describe("openlibrary searchText", () => {
 
     const result = await create("openlibrary").searchText!(" the made-up phrase ");
 
-    const url = new URL(String(fetch.mock.calls[0]?.[0]));
+    const url = new URL(calledUrl(fetch.mock.calls[0]));
     expect(url.pathname).toBe("/search/inside.json");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       q: "the made-up phrase",
@@ -241,7 +241,7 @@ describe("openlibrary searchText", () => {
     const result = await create("openlibrary").searchText!("phrase", { book: "targetscan" });
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(String(fetch.mock.calls[1]?.[0])).toContain("limit=100");
+    expect(calledUrl(fetch.mock.calls[1])).toContain("limit=100");
     expect(result.page).toBe(2);
     expect(result.nextPage).toBe(3);
     expect(result.matches.map((match) => match.id)).toEqual(["targetscan"]);
@@ -259,7 +259,7 @@ describe("openlibrary searchText", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(String(fetch.mock.calls[1]?.[0])).toContain("page=5&");
+    expect(calledUrl(fetch.mock.calls[1])).toContain("page=5&");
     expect(result).toMatchObject({ page: 5, nextPage: 6, matches: [] });
   });
 
@@ -291,7 +291,7 @@ describe("openlibrary searchText", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(3);
-    expect(String(fetch.mock.calls[0]?.[0])).toContain("page=1&limit=100");
+    expect(calledUrl(fetch.mock.calls[0])).toContain("page=1&limit=100");
   });
 
   it("drops a hit whose identifier would leave the reader's path", async () => {

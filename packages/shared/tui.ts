@@ -53,32 +53,53 @@ const COLLAPSED_SCAN_WIDTH = 2048;
 /** C0 and C1 bytes, which drive the terminal rather than print in it. */
 const CONTROL_CHARACTERS = /\p{Cc}/gu;
 
+/** The first half of a surrogate pair, matched as one UTF-16 code unit. */
+const HIGH_SURROGATE = /^[\uD800-\uDBFF]$/;
+
 /**
  * Cut `text` to `end` code units without splitting a surrogate pair.
  *
  * Half a pair is not a character the terminal can measure or print, so a cut landing inside one
- * gives back the code unit before it.
+ * gives back the code unit before it. The unit is tested on its own: `codePointAt` would read a
+ * high surrogate together with the low one after it and see a whole character.
+ *
+ * @param {string} text The line.
+ * @param {number} end Code units to keep.
+ * @returns {string} The cut line.
  */
 function cutAt(text: string, end: number): string {
-  const last = text.charCodeAt(end - 1);
-  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+  return text.slice(0, HIGH_SURROGATE.test(text.slice(end - 1, end)) ? end - 1 : end);
 }
 
 /**
  * Strip everything that would drive the terminal instead of printing in it. Catalog records and
  * downloaded files carry whatever their publisher put there, so this renderer sanitizes exactly
  * like the harness fallback it replaces.
+ *
+ * @param {string} text Text from a tool result.
+ * @returns {string} The text with escape sequences and control characters gone.
  */
 function sanitize(text: string): string {
-  return stripVTControlCharacters(text.toWellFormed()).replace(CONTROL_CHARACTERS, " ");
+  return stripVTControlCharacters(text.toWellFormed()).replaceAll(CONTROL_CHARACTERS, " ");
 }
 
-/** Cut one preview line to `max`, marking that the rest is still there. */
+/**
+ * Cut one preview line to `max`, marking that the rest is still there.
+ *
+ * @param {string} text A sanitized line.
+ * @param {number} max Width of the preview.
+ * @returns {string} The line, ending in `…` when it was cut.
+ */
 function clip(text: string, max: number): string {
   return text.length <= max ? text : `${cutAt(text, max - 1)}…`;
 }
 
-/** Sanitize one line of a collapsed preview and fit it to the preview width. */
+/**
+ * Sanitize one line of a collapsed preview and fit it to the preview width.
+ *
+ * @param {string} line A line of the result.
+ * @returns {string} The preview line.
+ */
 function previewLine(line: string): string {
   const lead = line.length > COLLAPSED_SCAN_WIDTH ? cutAt(line, COLLAPSED_SCAN_WIDTH) : line;
   return clip(sanitize(lead), PREVIEW_LINE_WIDTH);
@@ -89,6 +110,10 @@ function previewLine(line: string): string {
  *
  * A slice of a book runs to hundreds of lines where the collapsed view shows ten, and a renderer
  * reruns on every streamed delta, so the hidden lines are counted rather than allocated.
+ *
+ * @param {string} body The result text.
+ * @param {number} max Lines to keep.
+ * @returns {{ lines: string[]; hidden: number }} The kept lines and the count of the rest.
  */
 function takeLines(body: string, max: number): { lines: string[]; hidden: number } {
   const lines: string[] = [];
@@ -112,12 +137,15 @@ function takeLines(body: string, max: number): { lines: string[]; hidden: number
  *
  * The tail is trimmed because a slice ending in a line break would otherwise spend one of the
  * ten preview lines on an empty row.
+ *
+ * @param {RenderedToolResult} result The tool result.
+ * @returns {string} The text parts joined by line breaks.
  */
 function resultText(result: RenderedToolResult): string {
   const parts: string[] = [];
   for (const part of result.content ?? []) {
     if (typeof part !== "object" || part === null) continue;
-    const text = Reflect.get(part, "text");
+    const text: unknown = Reflect.get(part, "text");
     if (typeof text === "string") parts.push(text);
   }
   return parts.join("\n").trimEnd();
@@ -126,6 +154,11 @@ function resultText(result: RenderedToolResult): string {
 /**
  * Render a finished result: a bounded preview while the row is collapsed, the complete text once
  * it is expanded.
+ *
+ * @param {RenderedToolResult} result The tool result.
+ * @param {RenderOptions} options Whether the row is expanded.
+ * @param {OutputTheme} theme The host theme.
+ * @returns {string} The rendered text.
  */
 export function renderToolResult(
   result: RenderedToolResult,
