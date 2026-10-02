@@ -82,6 +82,74 @@ describe("followText", () => {
     });
   });
 
+  it("drops a line-end half word before the next passage brings the whole one", async () => {
+    stubRoutes({
+      [step("counted seven gulls")]: hits(BOOK, "keeper {{{counted seven gulls}}} on the inter-"),
+      [step("seven gulls on the")]: hits(
+        BOOK,
+        "counted {{{seven gulls on the}}} inter- national rail",
+      ),
+    });
+
+    const read = await followText(create("openlibrary"), "counted seven gulls", {
+      book: BOOK,
+      steps: 2,
+      anchorWords: 4,
+    });
+
+    expect(read.passage).toBe("keeper counted seven gulls on the inter- national rail");
+  });
+
+  it("keeps the last word in the anchor when a lone dash ends the passage", async () => {
+    const fetch = stubRoutes({
+      [step("counted seven gulls")]: hits(BOOK, "keeper {{{counted seven gulls}}} on the rail -"),
+      [step("gulls on the rail")]: hits(BOOK, "seven {{{gulls on the rail}}} - and the fog"),
+    });
+
+    const read = await followText(create("openlibrary"), "counted seven gulls", {
+      book: BOOK,
+      steps: 2,
+      anchorWords: 4,
+    });
+
+    expect(String(fetch.mock.calls[1]?.[0])).toContain("q=gulls+on+the+rail&");
+    expect(read.passage).toBe("keeper counted seven gulls on the rail - and the fog");
+  });
+
+  it("takes the punctuation after the anchor once, from the next passage", async () => {
+    stubRoutes({
+      [step("counted seven gulls")]: hits(BOOK, "keeper {{{counted seven gulls}}} on the rail."),
+      [step("gulls on the rail")]: hits(BOOK, "seven {{{gulls on the rail}}}. Then the fog"),
+    });
+
+    const read = await followText(create("openlibrary"), "counted seven gulls", {
+      book: BOOK,
+      steps: 2,
+      anchorWords: 4,
+    });
+
+    expect(read.passage).toBe("keeper counted seven gulls on the rail. Then the fog");
+  });
+
+  it("takes an opening quotation mark once when reading backward", async () => {
+    stubRoutes({
+      [step("fog rolled over")]: hits(BOOK, "\u201C{{{Fog rolled over}}} the harbour"),
+      [step("Fog rolled over the")]: hits(
+        BOOK,
+        "the rail. \u201C{{{Fog rolled over the}}} harbour",
+      ),
+    });
+
+    const read = await followText(create("openlibrary"), "fog rolled over", {
+      book: BOOK,
+      direction: "backward",
+      steps: 2,
+      anchorWords: 4,
+    });
+
+    expect(read.passage).toBe("the rail. \u201CFog rolled over the harbour");
+  });
+
   it("reads backward by prepending the words in front of each match", async () => {
     const fetch = stubRoutes({
       [step("harbour wall and")]: hits(

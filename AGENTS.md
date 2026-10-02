@@ -86,7 +86,9 @@ answered; three candidates were dropped.
   `searchText`. Each step searches the passage's last `anchorWords` (7) words, or the first
   ones backward, with the same `book` and 100 hits a page, and appends what the matching passage
   adds. A passage whose word next to the anchor disagrees with the text read so far is from
-  another place in the book and is dropped. With nothing left the chain stops as `lost`. A
+  another place in the book and is dropped. With nothing left the chain stops as `lost`. Before
+  a step appends, the passage is cut back to the anchor's last word, so punctuation past it and a
+  line-end half word arrive once, with the next passage. A
   failure after the first search ends the chain as `error` and keeps the passage. One call runs
   `DEFAULT_FOLLOW_STEPS` (3) searches, at most `MAX_FOLLOW_STEPS` (10), and returns `anchor`,
   the query that reads on: ten searches at 30 seconds each are five minutes inside one tool call
@@ -212,7 +214,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 21 files / 229 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 21 files / 233 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
 because the publish job tests before it builds.

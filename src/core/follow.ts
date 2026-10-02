@@ -28,18 +28,15 @@ const DEFAULT_STEP_PAGES = 1;
 const OPEN = "{{{";
 const CLOSE = "}}}";
 
-/** A passage split around one highlighted match, markers removed from both parts. */
+/** A passage split around one highlighted match, each part keeping its space next to the match. */
 interface Split {
   before: string;
   after: string;
 }
 
-/** Collapse OCR line breaks and runs of spaces, which are layout, not text. */
-function collapse(text: string): string {
-  return text
-    .replaceAll(/\{\{\{|\}\}\}/g, "")
-    .replaceAll(/\s+/g, " ")
-    .trim();
+/** Flatten OCR line breaks and runs of spaces, which are layout, not text. */
+function flatten(text: string): string {
+  return text.replaceAll(/\{\{\{|\}\}\}/g, "").replaceAll(/\s+/g, " ");
 }
 
 /** The words of `text` that a search can match, without the punctuation around them. */
@@ -68,8 +65,8 @@ function splitPassage(snippet: string, direction: TextDirection): Split | undefi
   }
   if (start < 0 || end < 0) return undefined;
   return {
-    before: collapse(snippet.slice(0, start)),
-    after: collapse(snippet.slice(end + CLOSE.length)),
+    before: flatten(snippet.slice(0, start)).trimStart(),
+    after: flatten(snippet.slice(end + CLOSE.length)).trimEnd(),
   };
 }
 
@@ -80,29 +77,51 @@ function agreement(left: string[], right: string[]): number {
   return count;
 }
 
-/** The words to search next, and the words read before them, nearest first. */
+/** The words to search next, the words read before them nearest first, and the text to extend. */
 interface Edge {
   anchor: string;
   context: string[];
+  stem: string;
 }
 
-/** The passage's last words reading forward, its first reading back; a line-end half word is out. */
+/** A token holding no letter or digit, which no phrase search matches. */
+function blank(token: string): boolean {
+  return searchWords(token).length === 0;
+}
+
+/**
+ * The passage's last words reading forward, its first reading back.
+ *
+ * The stem ends on the anchor's outer word, so punctuation past it and a line-end half word come
+ * back once, with the next passage, instead of twice.
+ */
 function edgeOf(passage: string, direction: TextDirection, size: number): Edge {
-  const words = searchWords(passage);
+  const tokens = passage.split(" ");
   if (direction === "backward") {
+    const first = tokens.findIndex((token) => !blank(token));
+    const head = (tokens[first] ?? "").replace(/^[^\p{L}\p{N}]+/u, "");
+    const stem = [head, ...tokens.slice(first + 1)].join(" ");
+    const words = searchWords(stem);
     return {
       anchor: words.slice(0, size).join(" "),
       context: words.slice(size).map((word) => word.toLowerCase()),
+      stem,
     };
   }
-  const end = passage.endsWith("-") ? words.length - 1 : words.length;
-  const start = Math.max(0, end - size);
+  let last = tokens.findLastIndex((token) => !blank(token));
+  if (tokens[last]?.endsWith("-"))
+    last = tokens.findLastIndex((token, i) => i < last && !blank(token));
+  const tail = (tokens[last] ?? "").replace(/[^\p{L}\p{N}]+$/u, "");
+  const stem = [...tokens.slice(0, Math.max(0, last)), tail].join(" ");
+  const words = searchWords(stem);
+  const start = Math.max(0, words.length - size);
   return {
-    anchor: words.slice(start, end).join(" "),
+    anchor: words.slice(start).join(" "),
     context: words
       .slice(0, start)
       .map((word) => word.toLowerCase())
       .reverse(),
+    stem,
   };
 }
 
@@ -193,7 +212,7 @@ export async function followText(
     );
   }
 
-  let passage = collapse(opening);
+  let passage = flatten(opening).trim();
   let searches = 1;
   let stop: TextFollowStop = "steps";
   let error: string | undefined;
@@ -224,12 +243,12 @@ export async function followText(
       stop = "lost";
       break;
     }
-    if (!words) {
+    if (!words.trim()) {
       stop = "end";
       break;
     }
-    passage = direction === "forward" ? `${passage} ${words}` : `${words} ${passage}`;
-    if (searchWords(words).length === 0) {
+    passage = direction === "forward" ? `${edge.stem}${words}` : `${words}${edge.stem}`;
+    if (blank(words)) {
       stop = "end";
       break;
     }
