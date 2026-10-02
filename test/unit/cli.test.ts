@@ -1,4 +1,5 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import {
   cpSync,
   existsSync,
@@ -126,5 +127,27 @@ describe.skipIf(!existsSync(join(root, "dist/cli.mjs")))("books mcp from the bui
     } finally {
       rmSync(packaged, { recursive: true, force: true });
     }
+  });
+});
+
+/** Runs `src/cli.ts` with one output stream closed before the first write, as after `| head -1`. */
+async function closedPipe(closed: "stdout" | "stderr", ...args: readonly string[]) {
+  const child = spawn(process.execPath, [join(root, "src/cli.ts"), ...args], {
+    env: { ...env, CONSOLA_LEVEL: "3" },
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 10_000,
+  });
+  child[closed].destroy();
+  let output = "";
+  child[closed === "stdout" ? "stderr" : "stdout"]
+    .setEncoding("utf8")
+    .on("data", (chunk: string) => (output += chunk));
+  await once(child, "close");
+  return { code: child.exitCode, output };
+}
+
+describe("books with a closed pipe", () => {
+  it("ends quietly when stdout closes", async () => {
+    await expect(closedPipe("stdout", "providers")).resolves.toEqual({ code: 0, output: "" });
   });
 });
