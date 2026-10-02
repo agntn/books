@@ -7,6 +7,7 @@ import type {
   BookMatch,
   BookText,
   Rating,
+  TextFollowResult,
   TextMatch,
   TextSearchOptions,
   TextSearchResult,
@@ -164,6 +165,38 @@ export function formatTextSearch(result: TextSearchResult, options?: TextSearchO
     `${header} (page ${result.page}):`,
     ...result.matches.flatMap((match) => formatTextMatch(match)),
     more,
+    result.attribution ?? null,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
+/** The last line of a chained read: why it stopped and the query that reads on. */
+function followStop(result: TextFollowResult): string {
+  const anchor = `"${oneLine(result.anchor)}"`;
+  const away = result.direction === "forward" ? "further on" : "further back";
+  switch (result.stop) {
+    case "steps":
+      return `(read on: query ${anchor}, the same book and direction)`;
+    case "lost":
+      return `(lost the book: ${anchor} did not find it in the hits read; restart from a phrase of the main text ${away}, or raise maxPages)`;
+    case "end":
+      return `(no words past ${anchor} in the scan's passage; restart from a phrase ${away})`;
+    case "repeat":
+      return `(the passage repeats at ${anchor}; restart from a phrase ${away})`;
+    case "error":
+      return `(stopped by a failed search: ${oneLine(result.error ?? "unknown error")}; read on: query ${anchor}, the same book and direction)`;
+  }
+}
+
+/** A passage read by chaining searches, on one line, with the query that reads on. */
+export function formatTextFollow(result: TextFollowResult): string {
+  const title = result.title ? oneLine(result.title) : result.book;
+  return [
+    `[${result.provider}] ${title} - ${formatAuthors(result.authors)}  (id=${result.book}, ${result.direction} from "${oneLine(result.query)}", ${result.searches} ${result.searches === 1 ? "search" : "searches"})`,
+    oneLine(result.passage),
+    followStop(result),
+    result.url,
     result.attribution ?? null,
   ]
     .filter((line) => line !== null)

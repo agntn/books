@@ -24,12 +24,20 @@ import {
   formatProviders,
   formatSearchAll,
   formatText,
+  formatTextFollow,
   formatTextSearch,
 } from "./core/format.ts";
+import { followText } from "./core/follow.ts";
 import { requireOperation } from "./core/provider.ts";
 import { listProviders, type ProviderListing } from "./core/registry.ts";
 import { isAllProviders, providerArg, selectOneProvider, selectProvider } from "./core/resolve.ts";
-import type { Book, BookMatch, BookText, TextSearchResult } from "./core/types.ts";
+import type {
+  Book,
+  BookMatch,
+  BookText,
+  TextFollowResult,
+  TextSearchResult,
+} from "./core/types.ts";
 import "./providers/index.ts";
 
 /** Providers a fallback walk passed over, with the reason for each. */
@@ -45,6 +53,8 @@ export type BookDetails =
 export type TextDetails = { provider: string; slice: BookText; skipped?: Skipped };
 /** `search`, not `text`: the AI SDK output adds the answer text as `text`. */
 export type TextSearchDetails = { provider: string; search: TextSearchResult };
+/** `read`, not `text`: the AI SDK output adds the answer text as `text`. */
+export type TextFollowDetails = { provider: string; read: TextFollowResult };
 export type ProvidersDetails = { providers: ProviderListing[] };
 
 export interface SearchParams {
@@ -75,6 +85,16 @@ export interface TextSearchParams {
   readonly book?: string;
   readonly page?: number;
   readonly limit?: number;
+  readonly maxPages?: number;
+  readonly provider?: string;
+}
+
+export interface TextFollowParams {
+  readonly query: string;
+  readonly book: string;
+  readonly backward?: boolean;
+  readonly steps?: number;
+  readonly anchorWords?: number;
   readonly maxPages?: number;
   readonly provider?: string;
 }
@@ -194,6 +214,26 @@ export async function booksTextSearch(
   const { name, provider } = selectOneProvider(providerArg(params.provider), "searchText");
   const search = await requireOperation(provider, "searchText")(params.query.trim(), options);
   return answer(formatTextSearch(search, options), { provider: name, search });
+}
+
+/**
+ * Reads on through one scan from a phrase by chaining phrase searches.
+ *
+ * @param params - Phrase, scan id, direction, step budget and the provider.
+ * @returns {Promise<ToolResult<TextFollowDetails>>} The stitched passage and the query to read on.
+ */
+export async function booksTextFollow(
+  params: TextFollowParams,
+): Promise<ToolResult<TextFollowDetails>> {
+  const { name, provider } = selectOneProvider(providerArg(params.provider), "searchText");
+  const read = await followText(provider, params.query.trim(), {
+    book: params.book,
+    direction: params.backward === true ? "backward" : "forward",
+    steps: params.steps,
+    anchorWords: params.anchorWords,
+    maxPages: params.maxPages,
+  });
+  return answer(formatTextFollow(read), { provider: name, read });
 }
 
 /**

@@ -65,6 +65,7 @@ describe("books Pi extension", () => {
       "books_get",
       "books_text",
       "books_text_search",
+      "books_text_follow",
     ]);
   });
 

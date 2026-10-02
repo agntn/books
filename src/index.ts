@@ -12,15 +12,24 @@ export type {
   ProviderConfig,
   Rating,
   SearchOptions,
+  TextDirection,
+  TextFollowOptions,
+  TextFollowResult,
+  TextFollowStop,
   TextMatch,
   TextOptions,
   TextSearchOptions,
   TextSearchResult,
 } from "./core/types.ts";
 export {
+  DEFAULT_ANCHOR_WORDS,
+  DEFAULT_FOLLOW_STEPS,
   DEFAULT_TEXT_BYTES,
+  MAX_ANCHOR_WORDS,
+  MAX_FOLLOW_STEPS,
   MAX_TEXT_BYTES,
   MAX_TEXT_SEARCH_PAGES,
+  MIN_ANCHOR_WORDS,
   clampMaxResults,
   clampTextBytes,
   toRating,
@@ -112,5 +121,7 @@ export {
   formatRating,
   formatSearchAll,
   formatText,
+  formatTextFollow,
   formatTextSearch,
 } from "./core/format.ts";
+export { followText } from "./core/follow.ts";

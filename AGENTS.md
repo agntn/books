@@ -3,8 +3,8 @@
 ## Scope
 
 Unified book provider library. Normalizes catalog search, bibliographic records, public-domain
-full text and phrase search inside scans across five backends, with ISBN validation and UTF-8-safe
-range reading in core.
+full text and phrase search inside scans across five backends, with ISBN validation, UTF-8-safe
+range reading and a scan read on by chained phrase searches in core.
 Exports a CLI (`books` binary), a programmatic API, an MCP server (`@agntn/books/mcp`), Vercel AI
 SDK tools (`@agntn/books/ai`), and Pi/OMP extensions.
 
@@ -38,6 +38,11 @@ answered; three candidates were dropped.
   The query is a phrase. A hit carries `fields.identifier[0]`, `meta_title`, `meta_creator`,
   `meta_year`, `page_num` as `[[n]]` and `highlight.text` with `{{{ }}}` around the match. An
   uncached query took 10 to 16 seconds, a cached one 3; `identifier:` in `q` is ignored.
+  On 2026-10-02 uncached queries took 30 to 32 seconds, and `add the` and
+  `saucepan and add the` answered 200 with `{"error":"Unable to query search engine"}`. In the
+  same scan a three-word phrase (198651 hits) left it off the first 100, six words (2459) put
+  it 92nd and seven words (273) 54th. A passage is a window of about 100 characters around the
+  match, so the longer the phrase, the fewer new words around it.
 - **Gutendex** (`gutendex.com`): `/books?search=` and `/books/{id}` verified. `/books?search=` 301s
   to `/books/?search=`. `formats` is a media-type map; the plain text is `text/plain; charset=utf-8`
   and `gutenberg.org` honours `Range` (206 with `Content-Range`). **Availability is uneven**: the
@@ -77,6 +82,14 @@ answered; three candidates were dropped.
   methods, and `requireOperation()` checks the capability flag _and_ the method before returning
   it bound. `searchText` is an optional flag, so a host's provider compiles without it; read it
   with `=== true`
+- `followText()` in `core/follow.ts` is not a fifth operation: it runs on any provider's
+  `searchText`. Each step searches the passage's last `anchorWords` (7) words, or the first
+  ones backward, with the same `book` and 100 hits a page, and appends what the matching passage
+  adds. A passage whose word next to the anchor disagrees with the text read so far is from
+  another place in the book and is dropped. With nothing left the chain stops as `lost`. A
+  failure after the first search ends the chain as `error` and keeps the passage. One call runs
+  `DEFAULT_FOLLOW_STEPS` (3) searches, at most `MAX_FOLLOW_STEPS` (10), and returns `anchor`,
+  the query that reads on: ten searches at 30 seconds each are five minutes inside one tool call
 - `ProviderCapabilities` carries the four operations plus `isbn` and `ratings`, which describe
   what a provider can resolve and what its records hold. `usableProviders()` answers for all five,
   which is what keeps an ISBN lookup out of the catalogs that would answer it wrongly
@@ -133,6 +146,7 @@ answered; three candidates were dropped.
 - `src/core/registry.ts` - self-registering registry
 - `src/core/resolve.ts` - capability-aware selection
 - `src/core/all.ts` - `searchAll`, `bookAll`, `bookWithFallback`, `textWithFallback`
+- `src/core/follow.ts` - `followText`, a scan read on by chained `searchText` calls
 - `src/core/format.ts` - plain-text formatters shared by every output surface
 - `src/providers/*.ts` - one file per provider; order in `index.ts` is the fallback order
 - `src/tools.ts` - the tool definitions every agent surface serves through `@agntn/tools`:
@@ -198,7 +212,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (vitest, 20 files / 213 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (vitest, 21 files / 229 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
 because the publish job tests before it builds.

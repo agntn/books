@@ -37,6 +37,7 @@ books search "Lalka Prus" --provider all   # the same query put to every catalog
 books get "Diuna" --author Herbert -p lubimyczytac
 books text "Frankenstein" --author Shelley --bytes 4000
 books search-text "the spice must flow"    # a phrase inside scanned books
+books follow-text "the spice must flow" --book <id>   # and on from there, a few words a search
 books providers                            # who is registered and what each can serve
 ```
 
@@ -66,6 +67,11 @@ Dune : House Corrino - Herbert, Brian  (2001, page 694, id=dunehousecorrino0000h
   https://archive.org/details/dunehousecorrino0000herb?q=%22the+spice+must+flow%22
 Passages from Internet Archive scans, found through Open Library
 ```
+
+A dozen words isn't much of a read. `books follow-text` searches again from the last words it
+got and stitches the answers together. Three searches by default, because one can take half a
+minute. The output ends with the query for the next run. `--backward` reads the other way, which
+helps when the chain drifts into a picture caption.
 
 ## The catalogs
 
@@ -119,7 +125,7 @@ fails its check digit before any request goes out. ISBN handling is exported too
 ## For agents
 
 **MCP** - read-only tools (`books_search`, `books_get`, `books_text`, `books_text_search`,
-`books_providers`):
+`books_text_follow`, `books_providers`):
 
 ```bash
 claude mcp add books --scope user -- node ~/Projekty/agntn/books/dist/cli.mjs mcp
@@ -128,7 +134,7 @@ claude mcp add books --scope user -- node ~/Projekty/agntn/books/dist/cli.mjs mc
 Run from a checkout, that command serves `src/`, so an edit needs a server restart, not a
 rebuild. `BOOKS_DIST=1` pins it to the bundle.
 
-**Vercel AI SDK** - `import { bookTool, searchTool, textTool, textSearchTool, providersTool } from "@agntn/books/ai"`.
+**Vercel AI SDK** - `import { bookTool, searchTool, textTool, textSearchTool, textFollowTool, providersTool } from "@agntn/books/ai"`.
 
 **Pi and OMP** - the package ships an extension for each; `pi install <path>` and
 `omp install <path>` register the same tools.
