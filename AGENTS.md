@@ -229,6 +229,12 @@ Verified beyond the suite:
 - Packed-layout gate: `pnpm pack`, `npm install --legacy-peer-deps` in an empty directory, a
   provider registered through the package entry and then listed by `books_providers` from
   `@agntn/books/mcp` - which is what proves both bundles share one registry chunk
+- Pi 1.x: the peers run `>=0.84.2 <2` and the dev pin sits on 1.0.2, so `tsc` reads the 1.x
+  types. `@agntn/tools` has to be 0.1.1 or newer, because 0.0.0 still fences Pi at `<1`. On
+  2026-10-05 the packed tarball installed next to Pi 1.0.2 without `ERESOLVE`, and a real `pi -p`
+  session got a clean `books_providers`, a Gutendex timeout back as `isError` (flaky, as
+  promised) and a `limit: 0` the host refused before `execute` ran. The next major gets the same
+  session before the fence moves
 
 ## Build & scripts
 
