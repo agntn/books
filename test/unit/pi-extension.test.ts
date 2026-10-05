@@ -1,6 +1,6 @@
 import type {
   ExtensionAPI,
-  ExtensionContext,
+  ExtensionToolContext,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -36,8 +36,8 @@ async function registerExtensionTools(): Promise<Map<string, ToolDefinition>> {
   return tools;
 }
 
-/** SAFETY: the tested execute functions do not read ExtensionContext. */
-const unusedContext = {} as ExtensionContext;
+/** SAFETY: the tested execute functions don't read ExtensionToolContext. */
+const unusedContext = {} as ExtensionToolContext;
 
 const ROUTES = {
   "/isbn/": { body: OPENLIBRARY_EDITION },

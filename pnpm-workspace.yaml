@@ -2,11 +2,13 @@ packages:
   - packages/*
 allowBuilds:
   "@google/genai": false
+  esbuild: true
   onnxruntime-node: false
   protobufjs: false
   sharp: false
 minimumReleaseAgeExclude:
   - typebox@1.3.18
+  - "@agntn/tools@0.1.1"
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
   vite-plus: 1.0.0
