@@ -158,15 +158,20 @@ answered; three candidates were dropped.
   every surface, the same facts as `details` (AI SDK output `{ ...details, text }`, so the text
   slice sits in `slice`). Loaded on the first call, so registering the tools loads no provider
 - `src/mcp.ts` - `createMcpServer()` on MCP SDK v2 through `@agntn/tools/mcp`
-- `src/cli.ts` - inside a checkout the built bin loads the `mcp` command from `src/` through a
+- `src/cli.ts` - `runCli` from `@agntn/tools/cli` over `bookTools`, with `mcp: true`. The `cli`
+  hint on each tool keeps the old command names (`search-text`, `follow-text`), its positional and
+  a short line for the command list; flags are the schema's property names in kebab case, so
+  `text` takes `--max-bytes`. `BooksError` prints as one line with exit code 1, `EPIPE` ends
+  quietly. Inside a checkout a bare `books mcp` from the built bin serves `src/mcp.ts` through a
   runtime URL, so a local server takes a change on restart. A copy under `node_modules`, a Node
   that doesn't strip types, a package without `src/` and `BOOKS_DIST=1` keep the bundle. A change
   to `src/cli.ts` itself still needs `pnpm build`. The source server fills its own registry, so a
   provider a host preloads into the bin (`node --import`) shows up only under `BOOKS_DIST=1`
-- `src/commands/mcp.ts` - imports the SDK inside `run()`: citty resolves every lazy subcommand to
-  read its `meta`, so a top-level import would put the SDK in the startup path of `books --help`
-- `src/commands/args.ts` - `parseNumericArg`, and `toBookQuery` which reads the positional as an
-  ISBN when it parses as one
+- `src/cli-commands.ts` - the CLI-only `get` and `text`, which read one word as an ISBN when it
+  passes its check digit and as a title otherwise. `get` looks the ISBN up, `text` refuses it before
+  any request, since no library with texts resolves one. No agent host sees either
+- No short flags (`-p`, `-n`), and a query of several words needs quotes: `@agntn/tools` 0.2.0 has
+  neither short flags nor a hint that joins the rest of the line
 - `packages/pi/extensions/books.ts`, `packages/omp/extensions/books.ts` - agent extensions over
   `registerPiTools` / `registerOmpTools`; type-import from `dist/tools.d.mts`. The OMP loader keeps
   both dynamic imports literal and takes `Text` from `pi.pi`: an import from
@@ -217,7 +222,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (`vp test run`, 21 files / 233 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (`vp test run`, 22 files / 238 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
 because the publish job tests before it builds.

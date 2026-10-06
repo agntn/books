@@ -50,10 +50,8 @@ const initialize = `${JSON.stringify({
 /* Which build the child loaded its MCP server from. */
 function loadedFrom(base: string, loaded: unknown): "bundle" | "source" | "unknown" {
   const urls = Array.isArray(loaded) ? loaded.filter((url) => typeof url === "string") : [];
-  const source = urls.includes(pathToFileURL(join(base, "src/mcp.ts")).href);
-  const bundle = urls.includes(pathToFileURL(join(base, "dist/mcp.mjs")).href);
-  if (source === bundle) return "unknown";
-  return source ? "source" : "bundle";
+  if (!urls.includes(pathToFileURL(join(base, "dist/cli.mjs")).href)) return "unknown";
+  return urls.includes(pathToFileURL(join(base, "src/mcp.ts")).href) ? "source" : "bundle";
 }
 
 /* Sends one initialize request to `mcp` from the bin in `base` and tells which build answered. */
@@ -136,7 +134,7 @@ describe.skipIf(!existsSync(join(root, "dist/cli.mjs")))("books mcp from the bui
 /* Runs `src/cli.ts` with one output stream closed before the first write, as after `| head -1`. */
 async function closedPipe(closed: "stdout" | "stderr", ...args: readonly string[]) {
   const child = spawn(process.execPath, [join(root, "src/cli.ts"), ...args], {
-    env: { ...env, CONSOLA_LEVEL: "3" },
+    env,
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 10_000,
   });
@@ -155,11 +153,26 @@ describe("books with a closed pipe", () => {
   });
 });
 
+describe("books get", () => {
+  it("refuses a query that names no book in one line, before any request", () => {
+    const run = spawnSync(process.execPath, [join(root, "src/cli.ts"), "get"], {
+      encoding: "utf8",
+      env,
+      timeout: 10_000,
+    });
+    expect(run).toMatchObject({
+      status: 1,
+      stdout: "",
+      stderr: "query needs one of isbn, id, or title\n",
+    });
+  });
+});
+
 describe("books search-text", () => {
   it("refuses provider all before any request, like the tool", () => {
     const run = spawnSync(
       process.execPath,
-      [join(root, "src/cli.ts"), "search-text", "made-up phrase", "-p", "all"],
+      [join(root, "src/cli.ts"), "search-text", "made-up phrase", "--provider", "all"],
       { encoding: "utf8", env, timeout: 10_000 },
     );
     expect(run.status).toBe(1);
@@ -177,7 +190,7 @@ describe("books follow-text", () => {
         "made-up phrase",
         "--book",
         "placeholderscan",
-        "-p",
+        "--provider",
         "all",
       ],
       { encoding: "utf8", env, timeout: 10_000 },
@@ -191,7 +204,7 @@ describe("books text", () => {
   it("refuses provider all before any request, like the tool", () => {
     const run = spawnSync(
       process.execPath,
-      [join(root, "src/cli.ts"), "text", "Placeholder Novel", "-p", "all"],
+      [join(root, "src/cli.ts"), "text", "Placeholder Novel", "--provider", "all"],
       { encoding: "utf8", env, timeout: 10_000 },
     );
     expect(run.status).toBe(1);

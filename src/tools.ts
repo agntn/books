@@ -27,7 +27,7 @@ let operations: Promise<typeof import("./tool-operations.ts")> | undefined;
  *
  * @returns {Promise<typeof import("./tool-operations.ts")>} The executors.
  */
-function loadOperations(): Promise<typeof import("./tool-operations.ts")> {
+export function loadOperations(): Promise<typeof import("./tool-operations.ts")> {
   operations ??= import("./tool-operations.ts").catch((error: unknown) => {
     operations = undefined;
     throw error;
@@ -68,6 +68,7 @@ export const providersTool = defineTool({
   ],
   effect: "read",
   input: Type.Object({}),
+  cli: { description: "List registered book providers and capabilities" },
   execute: async () => (await loadOperations()).booksProviders(),
 });
 
@@ -102,6 +103,7 @@ export const searchTool = defineTool({
     },
     { additionalProperties: false },
   ),
+  cli: { description: "Search providers for books matching a query", positional: ["query"] },
   execute: async (params) => (await loadOperations()).booksSearch(params),
 });
 
@@ -239,6 +241,11 @@ export const textSearchTool = defineTool({
     },
     { additionalProperties: false },
   ),
+  cli: {
+    command: "search-text",
+    description: "Find a phrase inside scanned books and print the passages around it",
+    positional: ["query"],
+  },
   execute: async (params) => (await loadOperations()).booksTextSearch(params),
 });
 
@@ -306,6 +313,11 @@ export const textFollowTool = defineTool({
     },
     { additionalProperties: false },
   ),
+  cli: {
+    command: "follow-text",
+    description: "Read on through a scanned book from a phrase, one search at a time",
+    positional: ["query"],
+  },
   execute: async (params) => (await loadOperations()).booksTextFollow(params),
 });
 

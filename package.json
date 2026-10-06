@@ -55,10 +55,8 @@
     "release": "pnpm test && pnpm build && changelogen --release --push"
   },
   "dependencies": {
-    "@agntn/tools": "0.1.1",
+    "@agntn/tools": "0.2.0",
     "@modelcontextprotocol/server": "2.2.0",
-    "citty": "0.2.2",
-    "consola": "3.4.2",
     "node-html-parser": "9.0.4"
   },
   "devDependencies": {
