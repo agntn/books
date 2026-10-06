@@ -180,7 +180,6 @@ export const textTool = defineTool({
     },
     { additionalProperties: false },
   ),
-  cli: { description: "Read a slice of a public-domain book's text", positional: ["title"] },
   execute: async (params) => (await loadOperations()).booksText(params),
 });
 

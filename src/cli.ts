@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "@agntn/tools/cli";
-import { getCommand } from "./cli-commands.ts";
+import { getCommand, textCommand } from "./cli-commands.ts";
 import { BooksError } from "./core/errors.ts";
 import type { createMcpServer } from "./mcp.ts";
 import { bookTools } from "./tools.ts";
@@ -63,7 +63,7 @@ if (servesSource(argv)) {
       version,
       description: "Unified book catalog CLI",
       tools: bookTools,
-      commands: [getCommand],
+      commands: [getCommand, textCommand],
       mcp: true,
       expected: (error) => error instanceof BooksError,
     },

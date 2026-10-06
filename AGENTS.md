@@ -167,8 +167,9 @@ answered; three candidates were dropped.
   that doesn't strip types, a package without `src/` and `BOOKS_DIST=1` keep the bundle. A change
   to `src/cli.ts` itself still needs `pnpm build`. The source server fills its own registry, so a
   provider a host preloads into the bin (`node --import`) shows up only under `BOOKS_DIST=1`
-- `src/cli-commands.ts` - the CLI-only `get`, which reads one word as an ISBN when it passes its
-  check digit and as a title otherwise, then runs the `books_get` executor. No agent host sees it
+- `src/cli-commands.ts` - the CLI-only `get` and `text`, which read one word as an ISBN when it
+  passes its check digit and as a title otherwise. `get` looks the ISBN up, `text` refuses it before
+  any request, since no library with texts resolves one. No agent host sees either
 - No short flags (`-p`, `-n`), and a query of several words needs quotes: `@agntn/tools` 0.2.0 has
   neither short flags nor a hint that joins the rest of the line
 - `packages/pi/extensions/books.ts`, `packages/omp/extensions/books.ts` - agent extensions over
@@ -221,7 +222,7 @@ answered; three candidates were dropped.
 
 ## Testing
 
-`pnpm test` (`vp test run`, 22 files / 236 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
+`pnpm test` (`vp test run`, 22 files / 238 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
 because the publish job tests before it builds.
