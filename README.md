@@ -28,24 +28,28 @@ Set on the desert planet Arrakis, Dune is the story of the boy Paul Atreides...
 Source: https://openlibrary.org/books/OL7524304M
 ```
 
-The positional argument is whatever names the book. Thirteen digits that pass their check digit
-are an ISBN; anything else is a title.
+The positional argument is whatever names the book. Ten or thirteen digits that pass their check
+digit are an ISBN, anything else is a title.
 
 ```bash
 books search "dune herbert" --limit 3      # candidates, with the id for an exact lookup
 books search "Lalka Prus" --provider all   # the same query put to every catalog at once
-books get "Diuna" --author Herbert -p lubimyczytac
-books text "Frankenstein" --author Shelley --bytes 4000
+books get "Diuna" --author Herbert --provider lubimyczytac
+books text "Frankenstein" --author Shelley --max-bytes 4000
 books search-text "the spice must flow"    # a phrase inside scanned books
 books follow-text "the spice must flow" --book <id>   # and on from there, a few words a search
 books providers                            # who is registered and what each can serve
 ```
 
+The commands are the agent tools, built by `runCli` from `@agntn/tools`. Flags come from the
+schema, and `--json` prints the details an agent gets. Quote a query with spaces:
+`books search dune herbert` refuses the extra word instead of quietly forgetting Herbert.
+
 `books text` reads a slice and tells you where the next one starts, because a novel is several
 hundred kilobytes and nobody wants all of it at once:
 
 ```console
-$ books text "Lalka tom pierwszy" --offset 2000 --bytes 300
+$ books text "Lalka tom pierwszy" --offset 2000 --max-bytes 300
 [wolnelektury] Lalka, tom pierwszy - Bolesław Prus
 Bytes 2000-2300 of 860296
 
