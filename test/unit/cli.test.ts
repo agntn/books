@@ -211,3 +211,35 @@ describe("books text", () => {
     expect(run.stderr).toContain("text reads one provider; leave provider empty");
   });
 });
+
+/* Runs `src/cli.ts` with `args` and keeps what an error leaves behind. */
+function refusal(...args: readonly string[]) {
+  const run = spawnSync(process.execPath, [join(root, "src/cli.ts"), ...args], {
+    encoding: "utf8",
+    env,
+    timeout: 10_000,
+  });
+  return { status: run.status, stderr: run.stderr };
+}
+
+describe("books short flags and loose words", () => {
+  it.each([
+    [["search", "dune", "herbert", "-n", "0"], "Invalid arguments at /limit: must be >= 1\n"],
+    [["search", "dune", "herbert", "-p", "nope"], "Unknown provider: nope\n"],
+    [["get", "Diuna", "-a", "Herbert", "-p", "nope"], "Unknown provider: nope\n"],
+    [
+      ["text", "Lalka", "-a", "Prus", "-o", "5", "-b", "10", "-p", "all"],
+      "text reads one provider; leave provider empty\n",
+    ],
+    [
+      ["search-text", "the", "spice", "must", "flow", "-n", "0"],
+      "Invalid arguments at /limit: must be >= 1\n",
+    ],
+    [
+      ["follow-text", "the", "spice", "must", "flow", "--book", "x", "-p", "all"],
+      "searchText reads one provider; leave provider empty\n",
+    ],
+  ])("books %j reaches the tool before any request", (args, stderr) => {
+    expect(refusal(...args)).toEqual({ status: 1, stderr });
+  });
+});
