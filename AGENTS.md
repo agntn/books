@@ -170,8 +170,10 @@ answered; three candidates were dropped.
 - `src/cli-commands.ts` - the CLI-only `get` and `text`, which read one word as an ISBN when it
   passes its check digit and as a title otherwise. `get` looks the ISBN up, `text` refuses it before
   any request, since no library with texts resolves one. No agent host sees either
-- No short flags (`-p`, `-n`), and a query of several words needs quotes: `@agntn/tools` 0.2.0 has
-  neither short flags nor a hint that joins the rest of the line
+- Short flags as the citty CLI had them: `-p` provider wherever a command takes one, `-n` limit on
+  `search` and `search-text`, `-a` author on `get` and `text`, `-o` offset and `-b` max bytes on
+  `text`. `search`, `search-text` and `follow-text` take `query` as `rest`, so loose words make
+  one query. `get` and `text` keep one positional, and a title of several words needs quotes
 - `packages/pi/extensions/books.ts`, `packages/omp/extensions/books.ts` - agent extensions over
   `registerPiTools` / `registerOmpTools`; type-import from `dist/tools.d.mts`. The OMP loader keeps
   both dynamic imports literal and takes `Text` from `pi.pi`: an import from

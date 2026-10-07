@@ -103,7 +103,11 @@ export const searchTool = defineTool({
     },
     { additionalProperties: false },
   ),
-  cli: { description: "Search providers for books matching a query", positional: ["query"] },
+  cli: {
+    description: "Search providers for books matching a query",
+    rest: "query",
+    short: { limit: "n", provider: "p" },
+  },
   execute: async (params) => (await loadOperations()).booksSearch(params),
 });
 
@@ -244,7 +248,8 @@ export const textSearchTool = defineTool({
   cli: {
     command: "search-text",
     description: "Find a phrase inside scanned books and print the passages around it",
-    positional: ["query"],
+    rest: "query",
+    short: { limit: "n", provider: "p" },
   },
   execute: async (params) => (await loadOperations()).booksTextSearch(params),
 });
@@ -316,7 +321,8 @@ export const textFollowTool = defineTool({
   cli: {
     command: "follow-text",
     description: "Read on through a scanned book from a phrase, one search at a time",
-    positional: ["query"],
+    rest: "query",
+    short: { provider: "p" },
   },
   execute: async (params) => (await loadOperations()).booksTextFollow(params),
 });

@@ -32,18 +32,20 @@ The positional argument is whatever names the book. Ten or thirteen digits that 
 digit are an ISBN, anything else is a title.
 
 ```bash
-books search "dune herbert" --limit 3      # candidates, with the id for an exact lookup
-books search "Lalka Prus" --provider all   # the same query put to every catalog at once
-books get "Diuna" --author Herbert --provider lubimyczytac
-books text "Frankenstein" --author Shelley --max-bytes 4000
-books search-text "the spice must flow"    # a phrase inside scanned books
-books follow-text "the spice must flow" --book <id>   # and on from there, a few words a search
+books search dune herbert -n 3             # candidates, with the id for an exact lookup
+books search Lalka Prus -p all             # the same query put to every catalog at once
+books get Diuna -a Herbert -p lubimyczytac
+books text Frankenstein -a Shelley -b 4000
+books search-text the spice must flow      # a phrase inside scanned books
+books follow-text the spice must flow --book <id>   # and on from there, a few words a search
 books providers                            # who is registered and what each can serve
 ```
 
 The commands are the agent tools, built by `runCli` from `@agntn/tools`. Flags come from the
-schema, and `--json` prints the details an agent gets. Quote a query with spaces:
-`books search dune herbert` refuses the extra word instead of quietly forgetting Herbert.
+schema, and `--json` prints the details an agent gets. Typing `--provider` gets old fast, so the
+usual ones have a letter: `-p`, `-n`, `-a`, `-o`, `-b`. A query needs no quotes. Every word
+after `search`, `search-text` or `follow-text` lands in it. A title still does, though:
+`books text Pan Tadeusz` refuses `Tadeusz` instead of quietly hunting for a book called Pan.
 
 `books text` reads a slice and tells you where the next one starts, because a novel is several
 hundred kilobytes and nobody wants all of it at once:

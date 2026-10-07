@@ -28,7 +28,7 @@ export const getCommand = defineTool({
     },
     { additionalProperties: false },
   ),
-  cli: { command: "get", positional: ["book"] },
+  cli: { command: "get", positional: ["book"], short: { author: "a", provider: "p" } },
   execute: async ({ book = "", ...rest }) => {
     const named = book.trim();
     const key = isIsbn(named) ? { isbn: normalizeIsbn(named) } : { title: named };
@@ -49,7 +49,11 @@ export const textCommand = defineTool({
     },
     { additionalProperties: false },
   ),
-  cli: { command: "text", positional: ["book"] },
+  cli: {
+    command: "text",
+    positional: ["book"],
+    short: { author: "a", offset: "o", maxBytes: "b", provider: "p" },
+  },
   execute: async ({ book = "", ...rest }) => {
     const title = book.trim();
     if (isIsbn(title)) {
