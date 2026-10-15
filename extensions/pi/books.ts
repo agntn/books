@@ -6,12 +6,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { registerPiTools, type PiRenderers } from "@agntn/tools/pi";
 
-import type * as BookTools from "../../../dist/tools.d.mts";
-import type { OutputTheme, RenderedToolResult, RenderOptions } from "../../shared/tui.ts";
-import { renderToolResult } from "../../shared/tui.ts";
+import type * as BookTools from "../../dist/tools.d.mts";
+import type { OutputTheme, RenderedToolResult, RenderOptions } from "../shared/tui.ts";
+import { renderToolResult } from "../shared/tui.ts";
 
-const sourceModuleUrl = new URL("../../../src/tools.ts", import.meta.url);
-const distributionModuleUrl = new URL("../../../dist/tools.mjs", import.meta.url);
+const sourceModuleUrl = new URL("../../src/tools.ts", import.meta.url);
+const distributionModuleUrl = new URL("../../dist/tools.mjs", import.meta.url);
 
 /**
  * Render a finished call's output: the shared bounded preview, whole once expanded.

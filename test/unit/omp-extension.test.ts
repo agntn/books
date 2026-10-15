@@ -22,7 +22,7 @@ import {
 } from "../helpers.ts";
 import { MAX_TEXT_BYTES } from "../../src/core/types.ts";
 import { bookTools } from "../../src/tools.ts";
-import booksOmpExtension from "../../packages/omp/extensions/books.ts";
+import booksOmpExtension from "../../extensions/omp/books.ts";
 
 interface RegisteredExtension {
   label: string | undefined;

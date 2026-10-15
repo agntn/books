@@ -174,13 +174,13 @@ answered; three candidates were dropped.
   `search` and `search-text`, `-a` author on `get` and `text`, `-o` offset and `-b` max bytes on
   `text`. `search`, `search-text` and `follow-text` take `query` as `rest`, so loose words make
   one query. `get` and `text` keep one positional, and a title of several words needs quotes
-- `packages/pi/extensions/books.ts`, `packages/omp/extensions/books.ts` - agent extensions over
+- `extensions/pi/books.ts`, `extensions/omp/books.ts` - agent extensions over
   `registerPiTools` / `registerOmpTools`; type-import from `dist/tools.d.mts`. The OMP loader keeps
   both dynamic imports literal and takes `Text` from `pi.pi`: an import from
   `@oh-my-pi/pi-coding-agent/tui` stopped the extension loading in compiled OMP, and the test
   mock of that module throws. The status line cuts an argument to 100 characters before
   `sanitizeLine`, which is quadratic on an unclosed `ESC]`
-- `packages/shared/tui.ts` - collapsed result previews for both extensions: ten lines cut to a
+- `extensions/shared/tui.ts` - collapsed result previews for both extensions: ten lines cut to a
   200-character width, the complete text once the row is expanded
 
 ## Constraints

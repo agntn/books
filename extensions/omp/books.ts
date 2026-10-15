@@ -5,14 +5,14 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { registerOmpTools, type OmpRenderers } from "@agntn/tools/omp";
 
-import type * as BookTools from "../../../dist/tools.d.mts";
-import type { OutputTheme, RenderedToolResult, RenderOptions } from "../../shared/tui.ts";
-import { renderToolResult } from "../../shared/tui.ts";
+import type * as BookTools from "../../dist/tools.d.mts";
+import type { OutputTheme, RenderedToolResult, RenderOptions } from "../shared/tui.ts";
+import { renderToolResult } from "../shared/tui.ts";
 
 /** Longest status line argument, cut before `sanitizeLine`, which is slow on long escapes. */
 const PREVIEW_LENGTH = 100;
 
-const sourceModulePath = fileURLToPath(new URL("../../../src/tools.ts", import.meta.url));
+const sourceModulePath = fileURLToPath(new URL("../../src/tools.ts", import.meta.url));
 
 /**
  * Loads the book tool definitions shared with MCP, Pi and the AI SDK.
@@ -24,9 +24,7 @@ const sourceModulePath = fileURLToPath(new URL("../../../src/tools.ts", import.m
  */
 function loadTools(): Promise<typeof BookTools> {
   return (
-    existsSync(sourceModulePath)
-      ? import("../../../src/tools.ts")
-      : import("../../../dist/tools.mjs")
+    existsSync(sourceModulePath) ? import("../../src/tools.ts") : import("../../dist/tools.mjs")
   ) as Promise<typeof BookTools>;
 }
 
