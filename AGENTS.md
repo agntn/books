@@ -227,7 +227,8 @@ answered; three candidates were dropped.
 `pnpm test` (`vp test run`, 22 files / 238 tests, every backend stubbed via `vi.stubGlobal("fetch", ...)`).
 
 `test/unit/cli.test.ts` runs the built bin in both modes and skips itself when `dist/` is missing,
-because the publish job tests before it builds.
+so a bare `pnpm test` in a fresh checkout stays green; `test.yml` and the tag `test` job in
+`release.yml` build first and run it.
 
 Verified beyond the suite:
 
@@ -258,6 +259,3 @@ the build stays on obuild. `lint` and `fmt` build first because the extensions t
 `dist/tools.d.mts`, and without it the type-aware rules read them as `error` types. The
 readonly allow-list there holds public types and host ABI only: a new internal type gets
 `readonly` fields instead of an entry.
-
-`pnpm install --ignore-scripts` breaks the build: `rolldown-plugin-dts` fails with
-`Unexpected end of JSON input` because the TypeScript 7 native binary never gets installed.
