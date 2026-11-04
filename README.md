@@ -177,4 +177,7 @@ pnpm lint        # build, then vp lint and vp fmt --check
 pnpm build       # obuild - one bundle, four entries sharing the provider registry
 ```
 
+Which books may come out whole, and what a catalog has to prove before it gets in: that's
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 MIT © [oritwoen](https://github.com/oritwoen)

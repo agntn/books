@@ -1,8 +1,9 @@
 /**
  * Wolne Lektury provider - the Polish free-licence library, with the texts themselves
  *
- * No API key. Records come from the JSON API, but the API has no search endpoint, so `search()`
- * reads the site's result page and every match carries the slug the API is keyed by. Volumes of
+ * No API key. Records come from the JSON API, but the API has no search endpoint (`?search=` on
+ * `/api/books/` is ignored and hands back the head of the catalog), so `search()` reads the
+ * site's result page and every match carries the slug the API is keyed by. Volumes of
  * a long novel are separate records: the parent holds the series and the children hold the text.
  *
  * API: https://wolnelektury.pl/api/books/{slug}/ (JSON), search page at /szukaj/
