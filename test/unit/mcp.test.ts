@@ -172,6 +172,28 @@ describe("Books MCP server", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("names a Gutendex timeout and the library it never asked", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    });
+    vi.stubGlobal("fetch", fetch);
+    const client = await connectTestClient();
+
+    const response = await client.callTool({
+      name: "books_text",
+      arguments: { title: "Placeholder Novel" },
+    });
+
+    expect(response.isError).toBe(true);
+    expect(resultText(response)).toBe(
+      "books_text failed: No response from gutendex after 2 attempts (timed out after 15 s): https://gutendex.com/books/?search=Placeholder+Novel; not tried: wolnelektury; pass one as provider (-p in the CLI) or retry later",
+    );
+    expect(fetch.mock.calls.map(([input]) => input)).toEqual([
+      "https://gutendex.com/books/?search=Placeholder+Novel",
+      "https://gutendex.com/books/?search=Placeholder+Novel",
+    ]);
+  });
+
   it("searches through the selected provider", async () => {
     stubRoutes(ROUTES);
     const client = await connectTestClient();

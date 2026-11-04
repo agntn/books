@@ -210,6 +210,23 @@ describe("books text", () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("text reads one provider; leave provider empty");
   });
+
+  it("names a timeout and the library it never asked, instead of HTTP 0", () => {
+    const timeOut = `data:text/javascript,${encodeURIComponent(
+      'globalThis.fetch = async () => { throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); };',
+    )}`;
+    const run = spawnSync(
+      process.execPath,
+      ["--import", timeOut, join(root, "src/cli.ts"), "text", "Placeholder Novel"],
+      { encoding: "utf8", env, timeout: 10_000 },
+    );
+    expect(run).toMatchObject({
+      status: 1,
+      stdout: "",
+      stderr:
+        "No response from gutendex after 2 attempts (timed out after 15 s): https://gutendex.com/books/?search=Placeholder+Novel; not tried: wolnelektury; pass one as provider (-p in the CLI) or retry later\n",
+    });
+  });
 });
 
 /* Runs `src/cli.ts` with `args` and keeps what an error leaves behind. */

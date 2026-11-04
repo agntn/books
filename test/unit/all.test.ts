@@ -11,6 +11,7 @@ import {
   InvalidInputError,
   NotFoundError,
   RateLimitError,
+  TransportError,
 } from "../../src/core/errors.ts";
 import { Provider } from "../../src/core/provider.ts";
 import type { ProviderConstructor } from "../../src/core/provider.ts";
@@ -143,7 +144,10 @@ describe("bookWithFallback", () => {
 
   it("stops on a slow backend rather than spending every provider's timeout", async () => {
     register(
-      failing("openlibrary", () => new HTTPError(0, "https://x.test", "timeout", "openlibrary")),
+      failing(
+        "openlibrary",
+        () => new TransportError("timed out after 15 s", { provider: "openlibrary", attempts: 2 }),
+      ),
     );
     const second = vi.fn();
     register(
@@ -162,9 +166,26 @@ describe("bookWithFallback", () => {
     );
 
     await expect(bookWithFallback({ title: "x" }, ["openlibrary", "bn"])).rejects.toThrow(
-      HTTPError,
+      TransportError,
     );
     expect(second).not.toHaveBeenCalled();
+  });
+
+  it("names the providers a stopped walk never asked, and how to ask one", async () => {
+    register(
+      failing(
+        "gutendex",
+        () => new TransportError("timed out after 15 s", { provider: "gutendex", attempts: 2 }),
+      ),
+    );
+    register(working("wolnelektury"));
+    register(working("bn"));
+
+    await expect(
+      textWithFallback({ title: "x" }, undefined, ["gutendex", "wolnelektury", "bn"]),
+    ).rejects.toThrow(
+      "No response from gutendex after 2 attempts (timed out after 15 s); not tried: wolnelektury, bn; pass one as provider (-p in the CLI) or retry later",
+    );
   });
 
   it("stops on a rate limit, which retrying elsewhere would hide", async () => {
@@ -172,7 +193,27 @@ describe("bookWithFallback", () => {
     register(working("bn"));
 
     await expect(bookWithFallback({ title: "x" }, ["openlibrary", "bn"])).rejects.toThrow(
-      RateLimitError,
+      "Rate limited by openlibrary (retry after 30s); not tried: bn; pass one as provider (-p in the CLI) or retry later",
+    );
+  });
+
+  it("names who is left without promising a retry fixes a refused request", async () => {
+    register(
+      failing("openlibrary", () => new HTTPError(400, "https://x.test", "bad", "openlibrary")),
+    );
+    register(working("bn"));
+
+    await expect(bookWithFallback({ title: "x" }, ["openlibrary", "bn"])).rejects.toThrow(
+      /^HTTP 400 from https:\/\/x\.test; not tried: bn; pass one as provider \(-p in the CLI\)$/,
+    );
+  });
+
+  it("adds no hint when the provider that stopped the walk was the last one", async () => {
+    register(failing("openlibrary", () => new NotFoundError("x", "openlibrary")));
+    register(failing("bn", () => new RateLimitError("bn")));
+
+    await expect(bookWithFallback({ title: "x" }, ["openlibrary", "bn"])).rejects.toThrow(
+      /^Rate limited by bn$/,
     );
   });
 

@@ -25,7 +25,13 @@ import type {
 } from "../core/types.ts";
 import { Provider, assertBookQuery, assertQuery } from "../core/provider.ts";
 import { buildQuery } from "../core/client.ts";
-import { HTTPError, InvalidInputError, NotFoundError, ParseError } from "../core/errors.ts";
+import {
+  HTTPError,
+  InvalidInputError,
+  NotFoundError,
+  ParseError,
+  TransportError,
+} from "../core/errors.ts";
 import { toIsbn10, toIsbn13 } from "../core/isbn.ts";
 import { register } from "../core/registry.ts";
 import { normalizeText, parseYear, uniqueStrings } from "../core/text.ts";
@@ -738,7 +744,13 @@ class OpenLibrary extends Provider {
         data.summary?.count ?? undefined,
       );
     } catch (error) {
-      if (error instanceof NotFoundError || error instanceof HTTPError) return undefined;
+      if (
+        error instanceof NotFoundError ||
+        error instanceof HTTPError ||
+        error instanceof TransportError
+      ) {
+        return undefined;
+      }
       throw error;
     }
   }

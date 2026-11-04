@@ -67,10 +67,101 @@ describe("retry", () => {
     });
 
     await expect(getJSON(FILE_URL, { timeout: 200 })).rejects.toMatchObject({
-      name: "HTTPError",
-      statusCode: 0,
+      name: "TransportError",
+      code: "TimeoutError",
+      attempts: 2,
     });
     expect(lifetimes[0]).toBeGreaterThanOrEqual(150);
+  });
+
+  it("repeats a request whose body broke off after the headers", async () => {
+    const fetch = stubAttempts(async (attempt) => (attempt === 1 ? cutBody() : json({ ok: true })));
+
+    await expect(getJSON(FILE_URL)).resolves.toEqual({ ok: true });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+/* The socket error undici puts under `fetch failed` when the server hangs up. */
+function socketClosed(): Error {
+  return Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+}
+
+/* A 200 whose body stream dies after the headers, as undici's `terminated` does. */
+function cutBody(): Response {
+  const body = new ReadableStream({
+    pull(controller) {
+      controller.error(new TypeError("terminated", { cause: socketClosed() }));
+    },
+  });
+  return new Response(body);
+}
+
+describe("no response", () => {
+  it("names the provider, the deadline and the attempts for a timeout", async () => {
+    stubAttempts((_attempt, signal) => stall(signal));
+
+    const failure = getJSON(FILE_URL, { timeout: 50, provider: "gutendex" });
+
+    await expect(failure).rejects.toMatchObject({
+      name: "TransportError",
+      message: `No response from gutendex after 2 attempts (timed out after 0.05 s): ${FILE_URL}`,
+      reason: "timed out after 0.05 s",
+      code: "TimeoutError",
+      attempts: 2,
+      provider: "gutendex",
+    });
+  });
+
+  /* Each row is a shape Node 26 fetch really throws, checked against a local server. */
+  it.each([
+    {
+      shape: "a reset before the headers",
+      error: () => new TypeError("fetch failed", { cause: socketClosed() }),
+      reason: "other side closed, UND_ERR_SOCKET",
+      code: "UND_ERR_SOCKET",
+    },
+    {
+      shape: "a refused connection that already names its code",
+      error: () =>
+        new TypeError("fetch failed", {
+          cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:59999"), {
+            code: "ECONNREFUSED",
+          }),
+        }),
+      reason: "connect ECONNREFUSED 127.0.0.1:59999",
+      code: "ECONNREFUSED",
+    },
+    {
+      shape: "a refusal on both address families with an empty message",
+      error: () =>
+        new TypeError("fetch failed", {
+          cause: Object.assign(
+            new AggregateError([new Error("connect ECONNREFUSED ::1:59999")], ""),
+            { code: "ECONNREFUSED" },
+          ),
+        }),
+      reason: "connect ECONNREFUSED ::1:59999",
+      code: "ECONNREFUSED",
+    },
+  ])("tells $shape from a timeout", async ({ error, reason, code }) => {
+    stubAttempts(() => Promise.reject(error()));
+
+    await expect(getJSON(FILE_URL, { provider: "gutendex" })).rejects.toMatchObject({
+      name: "TransportError",
+      message: `No response from gutendex after 2 attempts (${reason}): ${FILE_URL}`,
+      code,
+    });
+  });
+
+  it("names the break when the body is cut on both attempts", async () => {
+    stubAttempts(async () => cutBody());
+
+    await expect(getText(FILE_URL)).rejects.toMatchObject({
+      name: "TransportError",
+      reason: "other side closed, UND_ERR_SOCKET",
+      attempts: 2,
+    });
   });
 });
 

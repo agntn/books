@@ -7,6 +7,7 @@ import {
   PaymentError,
   RateLimitError,
   ResponseError,
+  TransportError,
   normalizeError,
 } from "../../src/core/errors.ts";
 
@@ -108,10 +109,32 @@ describe("normalizeError", () => {
     expect(error.provider).toBe("gutendex");
   });
 
-  it("turns a transport failure into an HTTPError with no status", () => {
+  it("turns a transport failure into a TransportError, not HTTP 0", () => {
     const error = normalizeError(new Error("ETIMEDOUT"), "gutendex");
-    expect(error).toBeInstanceOf(HTTPError);
-    expect((error as HTTPError).statusCode).toBe(0);
+    expect(error).toBeInstanceOf(TransportError);
+    expect(error.message).toBe("No response from gutendex (ETIMEDOUT)");
+  });
+
+  it("reads the socket's reason under undici's wrapper for a request it knows", () => {
+    const cause = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+    const error = normalizeError(
+      new TypeError("fetch failed", { cause }),
+      "gutendex",
+      "https://gutendex.com/books?key=SECRET",
+    );
+    expect(error).toMatchObject({
+      name: "TransportError",
+      message:
+        "No response from gutendex (other side closed, UND_ERR_SOCKET): https://gutendex.com/books?key=REDACTED",
+      code: "UND_ERR_SOCKET",
+    });
+  });
+
+  it("calls a timeout a timeout", () => {
+    const timeout = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    expect(normalizeError(timeout, "gutendex", "https://gutendex.com/books").message).toBe(
+      "No response from gutendex (timed out): https://gutendex.com/books",
+    );
   });
 
   it("wraps anything else as the base error", () => {

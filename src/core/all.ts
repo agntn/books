@@ -126,6 +126,23 @@ function isSkippable(error: BooksError): boolean {
   return error.name === "HTTPError" && status !== undefined && status >= 500;
 }
 
+/** Stops worth another go later, by name for the same reason as `SKIPPABLE_ERRORS`. */
+const TRANSIENT_ERRORS = new Set(["TransportError", "RateLimitError"]);
+
+/**
+ * Name who a stopped walk never asked, since the next library may well have the book.
+ *
+ * @param {BooksError} error The failure that stopped the walk.
+ * @param {readonly string[]} untried Registry keys left in the order.
+ * @returns {BooksError} The same error, its message naming them.
+ */
+function withUntried(error: BooksError, untried: readonly string[]): BooksError {
+  if (untried.length === 0) return error;
+  const later = TRANSIENT_ERRORS.has(error.name) ? " or retry later" : "";
+  error.message += `; not tried: ${untried.join(", ")}; pass one as provider (-p in the CLI)${later}`;
+  return error;
+}
+
 /**
  * Try providers in order until one answers.
  *
@@ -143,13 +160,13 @@ async function walk<T>(
   const skipped: { provider: string; error: string }[] = [];
   let lastError: BooksError | undefined;
 
-  for (const name of order) {
+  for (const [index, name] of order.entries()) {
     try {
       return { provider: name, result: await run(create(name)), skipped };
     } catch (error) {
       const normalized = normalizeError(error, name);
       lastError = normalized;
-      if (!isSkippable(normalized)) throw normalized;
+      if (!isSkippable(normalized)) throw withUntried(normalized, order.slice(index + 1));
       skipped.push({ provider: name, error: normalized.message });
     }
   }

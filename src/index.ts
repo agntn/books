@@ -45,6 +45,7 @@ export type { ProviderConstructor, ProviderOperation } from "./core/provider.ts"
 export {
   BooksError,
   HTTPError,
+  TransportError,
   AuthError,
   PaymentError,
   RateLimitError,
@@ -55,6 +56,7 @@ export {
   InvalidInputError,
   normalizeError,
 } from "./core/errors.ts";
+export type { TransportDetails } from "./core/errors.ts";
 export { buildQuery, getJSON, getText, readTextSlice } from "./core/client.ts";
 export type { ClientOptions, TextSlice } from "./core/client.ts";
 export {
