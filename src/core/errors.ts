@@ -65,6 +65,46 @@ export class HTTPError extends BooksError {
   }
 }
 
+/** What a `TransportError` knows besides its reason. */
+export interface TransportDetails {
+  /** Request URL, when known. */
+  readonly url?: string;
+  /** System error code or DOMException name, such as `UND_ERR_SOCKET` or `TimeoutError`. */
+  readonly code?: string;
+  /** Provider the request was made for. */
+  readonly provider?: string;
+  /** Requests sent before giving up, the retry included. */
+  readonly attempts?: number;
+}
+
+/** No HTTP response at all, so no status to report: the deadline passed or the socket broke. */
+export class TransportError extends BooksError {
+  /** What went wrong, such as `timed out after 15 s` or `other side closed, UND_ERR_SOCKET`. */
+  readonly reason: string;
+
+  readonly code?: string;
+
+  readonly attempts?: number;
+
+  /** Request URL with secrets redacted. Non-enumerable to keep serialized errors compact. */
+  readonly rawUrl?: string;
+
+  constructor(reason: string, details: Readonly<TransportDetails> = {}) {
+    const { url, code, provider, attempts } = details;
+    const from = provider ? ` from ${provider}` : "";
+    const tries = attempts !== undefined && attempts > 1 ? ` after ${attempts} attempts` : "";
+    super(`No response${from}${tries} (${reason})${url ? `: ${url}` : ""}`, provider);
+    this.reason = sanitizeUrl(reason);
+    this.code = code;
+    this.attempts = attempts;
+    if (url) {
+      this.rawUrl = sanitizeUrl(url);
+      Object.defineProperty(this, "rawUrl", { enumerable: false });
+    }
+    this.name = "TransportError";
+  }
+}
+
 /** Provider credentials were missing, rejected, or the provider refused the client. */
 export class AuthError extends BooksError {
   constructor(provider: string, detail?: string) {
@@ -174,6 +214,8 @@ interface Failure {
   readonly body?: string;
   readonly retryAfter?: string | null;
   readonly provider?: string;
+  /** Read off a failure that has no response, for the reason a `TransportError` gives. */
+  readonly cause?: TransportCause;
 }
 
 /**
@@ -231,16 +273,20 @@ function refused(failure: Failure): BooksError | undefined {
 const TRANSPORT_MESSAGES = ["econnrefused", "etimedout", "timeouterror"];
 
 /**
- * Map any other HTTP status, a known URL, or a connection failure.
+ * Map any other HTTP status, or a failure with a known URL or connection message but no status.
  *
  * @param {Failure} failure The failure being classified.
- * @returns {BooksError | undefined} An `HTTPError`, or `undefined` when this isn't one.
+ * @returns {BooksError | undefined} An `HTTPError` or a `TransportError`, or `undefined`.
  */
 function transport(failure: Failure): BooksError | undefined {
-  const { status, url } = failure;
+  const { status, url, provider } = failure;
   const connection = TRANSPORT_MESSAGES.some((text) => failure.lowerMessage.includes(text));
   if (status <= 0 && !url && !connection) return undefined;
-  return new HTTPError(status, url ?? "unknown", failure.body ?? failure.message, failure.provider);
+  if (status > 0) {
+    return new HTTPError(status, url ?? "unknown", failure.body ?? failure.message, provider);
+  }
+  const { reason, code } = failure.cause ?? { reason: failure.message };
+  return new TransportError(reason, { url, code, provider });
 }
 
 /** Classifiers in the order they are tried; the first that answers wins. */
@@ -250,7 +296,8 @@ const CLASSIFIERS = [notFound, rateLimited, paymentRequired, refused, transport]
  * Turn an unknown provider or transport failure into the Books error hierarchy.
  *
  * Existing `BooksError` instances pass through unchanged. Structured HTTP failures retain their
- * status, response body, and redacted request URL.
+ * status, response body, and redacted request URL. A request that got no response becomes a
+ * `TransportError`.
  *
  * HTTP 403 maps onto `AuthError`, not `PaymentError`: on a public catalog a 403 means the
  * service refused the client - a blocked user agent, a country restriction - and none of these
@@ -264,10 +311,10 @@ const CLASSIFIERS = [notFound, rateLimited, paymentRequired, refused, transport]
 export function normalizeError(error: unknown, provider?: string, requestUrl?: string): BooksError {
   if (error instanceof BooksError) return error;
   const message = error instanceof Error ? error.message : String(error);
-  const failure =
+  const failure: Failure =
     error instanceof ResponseError
       ? responseFailure(error, provider, requestUrl)
-      : messageFailure(message, provider, requestUrl);
+      : { ...messageFailure(message, provider, requestUrl), cause: transportCause(error) };
 
   for (const classify of CLASSIFIERS) {
     const classified = classify(failure);
@@ -316,4 +363,59 @@ function messageFailure(message: string, provider?: string, requestUrl?: string)
     url: requestUrl,
     provider,
   };
+}
+
+/** Why a request got no response, in words an agent can act on. */
+export interface TransportCause {
+  readonly reason: string;
+  readonly code?: string;
+}
+
+/** Deep enough for undici's `fetch failed` → `SocketError` → system error, with room to spare. */
+const MAX_CAUSE_DEPTH = 8;
+
+/**
+ * The system error code or DOMException name an error carries.
+ *
+ * @param {Readonly<Error>} error One link of the cause chain.
+ * @returns {string | undefined} `ECONNREFUSED`, `UND_ERR_SOCKET`, `TimeoutError` and the like.
+ */
+function errorCode(error: Readonly<Error>): string | undefined {
+  const code: unknown = (error as { code?: unknown }).code;
+  if (typeof code === "string") return code;
+  return error.name === "TimeoutError" || error.name === "AbortError" ? error.name : undefined;
+}
+
+/**
+ * Follow `cause` and `AggregateError` entries past undici's mute `fetch failed` to the socket.
+ *
+ * @param {unknown} error What `fetch` or the body read threw.
+ * @returns {TransportCause} The deepest message with text and the deepest code.
+ */
+function deepestCause(error: unknown): TransportCause {
+  let reason = error instanceof Error ? error.message : String(error);
+  let code: string | undefined;
+  let current: unknown = error;
+  for (let depth = 0; current instanceof Error && depth < MAX_CAUSE_DEPTH; depth += 1) {
+    if (current.message !== "") reason = current.message;
+    code = errorCode(current) ?? code;
+    current = current.cause ?? (current instanceof AggregateError ? current.errors[0] : undefined);
+  }
+  return { reason, code };
+}
+
+/**
+ * Reason and code for no response: a timeout with its deadline, else the socket's own words.
+ *
+ * @param {unknown} error What `fetch` or the body read threw.
+ * @param {number} [timeout] Deadline of each attempt in milliseconds, when known.
+ * @returns {TransportCause} The reason to report and the code behind it.
+ */
+export function transportCause(error: unknown, timeout?: number): TransportCause {
+  const { reason, code } = deepestCause(error);
+  if (code === "TimeoutError") {
+    return { reason: timeout ? `timed out after ${timeout / 1000} s` : "timed out", code };
+  }
+  if (code === undefined || reason.includes(code)) return { reason, code };
+  return { reason: `${reason}, ${code}`, code };
 }

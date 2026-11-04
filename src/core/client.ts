@@ -1,6 +1,12 @@
 /** HTTP client wrapper for Books providers */
 
-import { ResponseError, normalizeError } from "./errors.ts";
+import {
+  type BooksError,
+  ResponseError,
+  TransportError,
+  normalizeError,
+  transportCause,
+} from "./errors.ts";
 import { trimPartialUtf8 } from "./text.ts";
 import { version } from "../version.ts";
 
@@ -84,19 +90,45 @@ async function get(
 ): Promise<Reply> {
   const headers = requestHeaders(request);
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
+  let attempts = 0;
   try {
     for (let retries = RETRIES; ; retries -= 1) {
+      attempts += 1;
       const outcome = await attempt(url, headers, request.format, timeout);
       if ("reply" in outcome) return outcome.reply;
       if (retries <= 0 || !outcome.retry) throw outcome.error;
     }
   } catch (error) {
-    throw normalizeError(error, options?.provider, url);
+    throw failed(error, { url, provider: options?.provider, timeout, attempts });
   }
+}
+
+/** What `get` knew about a request when it gave up on it. */
+interface GaveUp {
+  readonly url: string;
+  readonly provider?: string;
+  readonly timeout: number;
+  readonly attempts: number;
+}
+
+/**
+ * The error `get` gives up with; with no answer at all, that's the attempts and the deadline.
+ *
+ * @param {unknown} error The last attempt's failure.
+ * @param {Readonly<GaveUp>} request The request and how hard `get` tried.
+ * @returns {BooksError} The error to throw.
+ */
+function failed(error: unknown, request: Readonly<GaveUp>): BooksError {
+  const { url, provider, timeout, attempts } = request;
+  if (error instanceof ResponseError) return normalizeError(error, provider, url);
+  const { reason, code } = transportCause(error, timeout);
+  return new TransportError(reason, { url, code, provider, attempts });
 }
 
 /**
  * One request under its own deadline, so the repeat after a timeout gets a full one.
+ *
+ * Reads the body too, since a socket that drops after the headers didn't answer either.
  *
  * @param {string} url Request URL.
  * @param {Readonly<Record<string, string>>} headers Request headers.
@@ -127,8 +159,12 @@ async function attempt(
       retry: RETRY_STATUS_CODES.has(response.status),
     };
   }
-  const data = await readBody(response, format);
-  return { reply: { status: response.status, headers: response.headers, data } };
+  try {
+    const data = await readBody(response, format);
+    return { reply: { status: response.status, headers: response.headers, data } };
+  } catch (error) {
+    return { error, retry: true };
+  }
 }
 
 /**
