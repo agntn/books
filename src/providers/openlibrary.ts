@@ -520,6 +520,7 @@ class OpenLibrary extends Provider {
       year: doc.first_publish_year,
       id: keyId(doc.key),
       isbn: pickIsbn(doc.isbn),
+      /** Some edition's language, not the book's: a search for Dune can come back `gre`. */
       language: doc.language?.[0],
       url: doc.key ? `${this.baseUrl}${doc.key}` : undefined,
       rating: toRating(doc.ratings_average, RATING_SCALE, doc.ratings_count),
@@ -567,7 +568,8 @@ class OpenLibrary extends Provider {
    * @param {number} limit Hits per page.
    * @param {string | undefined} book The scan to keep, or `undefined` to keep every hit.
    * @returns {Promise<{ total: number; matches: TextMatch[] }>} The hit count and the matches kept.
-   * @throws {ParseError} When the response carries no `hits`.
+   * @throws {ParseError} When the response carries no `hits`, like the 200 that reads
+   * `{"error":"Unable to query search engine"}` when the archive's index is having a bad day.
    */
   private async hitPage(
     phrase: string,

@@ -21,7 +21,7 @@ export default defineConfig({
           ...options,
           allow: [
             ...(options?.allow ?? []),
-            /** Public records and options stay mutable; renderer types mirror Pi and OMP. */
+            /** Public types and the Pi/OMP renderer ABI only; an internal type gets `readonly`. */
             {
               from: "file",
               name: [
@@ -50,7 +50,16 @@ export default defineConfig({
             /** Lib types the rule reads as mutable whatever wraps them. */
             {
               from: "lib",
-              name: ["AbortSignal", "Headers", "ReadonlyMap", "Response", "Uint8Array"],
+              name: [
+                "AbortSignal",
+                "Headers",
+                "ReadonlyMap",
+                "Request",
+                "RequestInit",
+                "Response",
+                "URL",
+                "Uint8Array",
+              ],
             },
             /** A Pi tool as the extension registers it. */
             {

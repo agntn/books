@@ -6,7 +6,8 @@
  * catalog has no publication dates and no ISBNs - a Gutenberg entry describes a text, not a
  * printed edition.
  *
- * API: https://gutendex.com (REST, JSON), texts served from gutenberg.org
+ * API: https://gutendex.com (REST, JSON), texts served from gutenberg.org. Paths keep the slash
+ * after `/books/`, since `/books?search=` costs a 301 to the same place.
  */
 
 import type {

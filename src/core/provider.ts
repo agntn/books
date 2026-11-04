@@ -82,6 +82,8 @@ export abstract class Provider {
    * The URL comes out of a provider's own response - Gutenberg's `formats` map, the Wolne
    * Lektury `txt` field - so it is checked before it is fetched. A catalog that started handing
    * out `file://` or a host on the caller's network would otherwise have this library read it.
+   * The host isn't pinned, though: Gutenberg serves its files from another host than the API
+   * that names them, so the provider is trusted about where its file lives.
    *
    * @param {string} url URL of the text file.
    * @param {TextOptions} [options] Offset and byte count the caller asked for.
