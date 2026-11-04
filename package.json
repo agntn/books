@@ -19,9 +19,9 @@
   },
   "files": [
     "dist",
-    "packages/shared",
-    "packages/omp/extensions",
-    "packages/pi/extensions"
+    "extensions/shared",
+    "extensions/omp",
+    "extensions/pi"
   ],
   "type": "module",
   "main": "./dist/index.mjs",
@@ -99,12 +99,12 @@
   "packageManager": "pnpm@11.23.0",
   "omp": {
     "extensions": [
-      "./packages/omp/extensions/books.ts"
+      "./extensions/omp/books.ts"
     ]
   },
   "pi": {
     "extensions": [
-      "./packages/pi/extensions/books.ts"
+      "./extensions/pi/books.ts"
     ]
   }
 }

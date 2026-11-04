@@ -21,7 +21,7 @@ import {
   stubRoutes,
 } from "../helpers.ts";
 import { MAX_TEXT_BYTES } from "../../src/core/types.ts";
-import booksExtension from "../../packages/pi/extensions/books.ts";
+import booksExtension from "../../extensions/pi/books.ts";
 
 /* SAFETY: the extension only calls registerTool during registration; the fake implements that seam. */
 async function registerExtensionTools(): Promise<Map<string, ToolDefinition>> {
