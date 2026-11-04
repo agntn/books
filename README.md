@@ -145,7 +145,7 @@ const matches = await create("lubimyczytac").search("Sapkowski", { limit: 5 });
 const comparison = await searchAll("Lalka Prus", { limit: 2 });
 ```
 
-For text, `textWithFallback({ title: "Frankenstein" }, { offset })` returns `text` and `nextOffset`, which is `undefined` at the end. Errors arrive as `BooksError` subclasses, including `NotFoundError`, `ParseError`, and `InvalidInputError`. You can probably guess which is which.
+Text comes the same way. `textWithFallback({ title: "Frankenstein" }, { offset })` puts the slice in `result`, so read `result.text` and `result.nextOffset`. The offset is `undefined` at the end. Errors arrive as `BooksError` subclasses, including `NotFoundError`, `ParseError`, and `InvalidInputError`. You can probably guess which is which.
 
 See the [exports](./src/index.ts), [result types](./src/core/types.ts), and [errors](./src/core/errors.ts).
 
