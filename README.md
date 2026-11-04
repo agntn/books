@@ -1,71 +1,121 @@
 # @agntn/books
 
-Five book catalogs behind one interface, and the two of them that can hand you the actual book.
+[![npm version](https://npmx.dev/api/registry/badge/version/@agntn/books)](https://npmx.dev/package/@agntn/books)
+[![npm downloads](https://npmx.dev/api/registry/badge/downloads/@agntn/books)](https://npmx.dev/package/@agntn/books)
+[![license](https://npmx.dev/api/registry/badge/license/@agntn/books)](https://npmx.dev/package/@agntn/books)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agntn/books)
 
-A bibliographic record is the same idea everywhere and a different JSON document in every catalog:
-Open Library splits a book from its printings, the National Library of Poland ships MARC with its
-fields glued together, Lubimyczytać publishes its data as a schema.org node for search engines.
-This library reads all five, returns one shape, and tells you which catalog answered.
+📚 Five catalogs, two sources of public domain texts. You ask for a book, you get its record, its text, or a passage from a scan.
 
-```bash
-npm install @agntn/books
-```
+## Why?
 
-## Command line
+Open Library splits works from editions. Poland's National Library glues fields together in MARC. Lubimyczytać hands search engines a schema.org node. Give all three to an agent, and it has three formats to untangle. This library reads five catalogs and returns one shape with the source.
 
-```console
-$ books get 9780441013593
-[openlibrary] Dune - Frank Herbert (2005)
+## ✨ Features
 
-Series: Dune (1); Dune Chronicles, Book 1
-Publisher: Ace Trade
-Pages: 544
-ISBN-13: 9780441013593
-Rating: 4.3/5 from 443 ratings
+- 📇 **Five catalogs.** You get records and ratings without an API key.
+- 🔎 **ISBN or title.** Ten or thirteen digits with a valid check digit get an ISBN lookup.
+- 🇵🇱 **Three Polish catalogs.** You can search Wolne Lektury, BN, and Lubimyczytać.
+- 🔀 **Fallback.** You get the first catalog that has it, and `skipped` tells you who was passed over.
+- 🪞 **Compare answers.** Use `-p all` to see where the catalogs disagree.
+- 📖 **Public domain texts.** You can read slices from Gutendex and Wolne Lektury.
+- 🗣️ **Search inside scans.** Find a phrase in Internet Archive books through Open Library.
+- 🧵 **Follow a passage.** Read on through a scan, forward or backward.
+- 🤖 **Agent tools.** Give the same operations to Pi, OMP, MCP, or the AI SDK.
 
-Set on the desert planet Arrakis, Dune is the story of the boy Paul Atreides...
-
-Source: https://openlibrary.org/books/OL7524304M
-```
-
-The positional argument is whatever names the book. Ten or thirteen digits that pass their check
-digit are an ISBN, anything else is a title.
+## 📦 Install
 
 ```bash
-books search dune herbert -n 3             # candidates, with the id for an exact lookup
-books search Lalka Prus -p all             # the same query put to every catalog at once
-books get Diuna -a Herbert -p lubimyczytac
-books text Frankenstein -a Shelley -b 4000
-books search-text the spice must flow      # a phrase inside scanned books
-books follow-text the spice must flow --book <id>   # and on from there, a few words a search
-books providers                            # who is registered and what each can serve
+pnpm add @agntn/books
 ```
 
-The commands are the agent tools, built by `runCli` from `@agntn/tools`. Flags come from the
-schema, and `--json` prints the details an agent gets. Typing `--provider` gets old fast, so the
-usual ones have a letter: `-p`, `-n`, `-a`, `-o`, `-b`. A query needs no quotes. Every word
-after `search`, `search-text` or `follow-text` lands in it. A title still does, though:
-`books text Pan Tadeusz` refuses `Tadeusz` instead of quietly hunting for a book called Pan.
+Node.js 26 or newer.
 
-`books text` reads a slice and tells you where the next one starts, because a novel is several
-hundred kilobytes and nobody wants all of it at once:
+## 🚀 First call
 
-```console
-$ books text "Lalka tom pierwszy" --offset 2000 --max-bytes 300
+```bash
+npx @agntn/books get 9788375780635
+```
+
+```text
+[openlibrary] Wiedzmin Ostatnie zyczenie - Andrzej Sapkowski (2014)
+
+Publisher: SuperNOWA
+Published: Apr 17, 2014
+Pages: 332
+ISBN-13: 9788375780635
+ISBN-10: 8375780634
+Id: OL32217717M
+Cover: https://covers.openlibrary.org/b/id/10862107-L.jpg
+
+Source: https://openlibrary.org/books/OL32217717M
+Catalog data from Open Library (openlibrary.org)
+```
+
+No key, no config. Open Library found the edition and dropped the Polish letters. Lubimyczytać spells the title "Ostatnie życzenie". After `pnpm add`, the bare command is `pnpm exec books`, or install once with `pnpm add -g @agntn/books`.
+
+### Commands
+
+| Command                   | What it does                                                   |
+| ------------------------- | -------------------------------------------------------------- |
+| `search <query...>`       | Candidates, with the ID for an exact lookup                    |
+| `get <isbn or title>`     | One book's record                                              |
+| `text <title>`            | A slice of a public domain text                                |
+| `search-text <phrase...>` | A phrase inside scanned books                                  |
+| `follow-text <phrase...>` | Reads on through one scan from that phrase. Requires `--book`. |
+| `providers`               | Who is registered and what each can serve                      |
+| `mcp`                     | MCP server over stdio                                          |
+
+```bash
+books search Lalka Prus -p all -n 2
+```
+
+```text
+[openlibrary] 2 matches for "Lalka Prus":
+Lalka - Bolesław Prus  (1890, rus, ISBN 9780701161408, 4/5 from 3 ratings, id=OL2852373W, https://openlibrary.org/works/OL2852373W)
+Lalka - Bolesław Prus  (1968, pol, id=OL38726454W, https://openlibrary.org/works/OL38726454W)
+
+[gutendex] No matches for "Lalka Prus"
+
+[wolnelektury] No matches for "Lalka Prus"
+
+[bn] 2 matches for "Lalka Prus":
+Bolesław Prus "Lalka" - Klukowski, Bogdan  (1992, polski, id=1040292, https://data.bn.org.pl/api/institutions/bibs.json?id=1040292)
+Bolesław Prus: Lalka - Mikułowski, Jan  (1914, polski, id=1410745, https://data.bn.org.pl/api/institutions/bibs.json?id=1410745)
+
+[lubimyczytac] 2 matches for "Lalka Prus":
+Lalka - Bolesław Prus  (polski, 8.1/10 from 143 ratings, id=5231446/lalka, https://lubimyczytac.pl/ksiazka/5231446/lalka)
+Lalka - audio opracowanie - Bolesław Prus  (polski, id=4838618/lalka-audio-opracowanie, https://lubimyczytac.pl/ksiazka/4838618/lalka-audio-opracowanie)
+```
+
+Five catalogs, five ideas of what you meant. Open Library starts with an 1890 work tagged `rus`, while two catalogs find nothing. Lubimyczytać adds an audio study guide. BN reads the query as a title, then as an author. "Lalka Prus" is neither, so you get titles with both words in them: books about _Lalka_.
+
+```bash
+books text "Lalka tom pierwszy" -p wolnelektury -o 2000 -b 300
+```
+
+```text
 [wolnelektury] Lalka, tom pierwszy - Bolesław Prus
 Bytes 2000-2300 of 860296
 
+Józio.
+
 — Już szósta?… Jak ten czas leci!… Wariat! wariat! — mruczał radca Węgrowicz.
-...
+
+Dla osób posilających się w tej co radca jadłodajni, dla jej właściciela, subiektów i chłopców przyczyny klęsk mających paść na S. Wokulskiego i jego sklep galanteryjny były tak jasn
+
 (continues - read on from 2300)
+Source: https://wolnelektury.pl/media/book/txt/lalka-tom-pierwszy.txt
+Free-licence text from Wolne Lektury (wolnelektury.pl)
 ```
 
-A book still in copyright has no text here. Open Library can still search inside its scan, and
-`books search-text` brings back the lines around the phrase. Got the scan id from a first search?
-Pass it as `--book` and only that book answers:
+That's 860296 bytes of novel. Nobody wants all of it at once. The continuation line tells you where to read on. A slice defaults to 32768 bytes and tops out at 262144.
 
-```console
-$ books search-text "the spice must flow" --book dunehousecorrino0000herb
+```bash
+books search-text the spice must flow --book dunehousecorrino0000herb
+```
+
+```text
 [openlibrary] "the spice must flow" in dunehousecorrino0000herb (page 1):
 Dune : House Corrino - Herbert, Brian  (2001, page 694, id=dunehousecorrino0000herb)
   > piles.” “We have a mystery here.” “{{{The spice must flow}}}.” “All melange harvesting and processing
@@ -74,110 +124,108 @@ Dune : House Corrino - Herbert, Brian  (2001, page 694, id=dunehousecorrino0000h
 Passages from Internet Archive scans, found through Open Library
 ```
 
-A dozen words isn't much of a read. `books follow-text` searches again from the last words it
-got and stitches the answers together. Three searches by default, because one can take half a
-minute. The output ends with the query for the next run. `--backward` reads the other way, which
-helps when the chain drifts into a picture caption.
+The spice must flow, but a dozen words isn't much of a read. Use `follow-text` to search again from the last words and stitch passages together. It runs three searches by default, and each can take half a minute. Set `--steps` or use `--backward` to read the other way.
 
-## The catalogs
+Phrase search also finds books still in copyright. Every word has to sit next to the others. A common phrase can bury your book beyond the pages read. If `--book` comes back empty, try a rarer phrase from that book.
 
-| Provider       | Search | Record | Text | Inside | By ISBN | Ratings | What it is for                                         |
-| -------------- | ------ | ------ | ---- | ------ | ------- | ------- | ------------------------------------------------------ |
-| `openlibrary`  | ✓      | ✓      |      | ✓      | ✓       | ✓       | The broad default: editions, works, blurbs, scores     |
-| `gutendex`     | ✓      | ✓      | ✓    |        |         |         | Project Gutenberg - English texts, out of copyright    |
-| `wolnelektury` | ✓      | ✓      | ✓    |        |         |         | Polish free-licence library - texts and audiobooks     |
-| `bn`           | ✓      | ✓      |      |        | ✓       |         | Polish national bibliography, read out of its MARC     |
-| `lubimyczytac` | ✓      | ✓      |      |        |         | ✓       | Polish readers: contemporary editions and their scores |
+Search and phrase queries need no quotes. For `get` and `text`, quote a title with multiple words. Use `-p` for provider, `-n` for limit, `-a` for author, `-o` for offset, `-b` for maximum bytes, and `--json` for details. See `books <command> --help`.
 
-None of them needs an API key. Registration order is the order a lookup walks them: the broad
-catalog first, then the two public-domain libraries, then the Polish ones. A Polish edition that
-Open Library happens to hold gets answered on the first hop, and one it does not falls through to
-a catalogue that does.
-
-Two of the columns are there to stop a request that would answer wrongly rather than not at all.
-An ISBN lookup only visits catalogs that index ISBNs - Lubimyczytać's search box, handed a number,
-returns unrelated books with perfect confidence. And only the two public-domain libraries have
-texts, because they are the only two entitled to give them away.
-
-## Library
+## 🧠 Library
 
 ```ts
-import { bookWithFallback, create, searchAll, textWithFallback } from "@agntn/books";
+import { bookWithFallback, create, searchAll } from "@agntn/books";
 
-// Walk the catalogs until one has it; `skipped` says who was passed over and why.
+// Walk the catalogs until one has it. `skipped` says who was passed over and why.
 const { provider, result, skipped } = await bookWithFallback({ isbn: "9788375780635" });
 
-// Or address one catalog directly.
+// Or ask one catalog directly.
 const matches = await create("lubimyczytac").search("Sapkowski", { limit: 5 });
 
-// Compare what every catalog holds for the same query - editions disagree about everything.
+// Same query, every catalog, each answer kept apart.
 const comparison = await searchAll("Lalka Prus", { limit: 2 });
+```
 
-// Read a book that is out of copyright, one slice at a time.
-let offset = 0;
-for (let page = 0; page < 3; page++) {
-  const { result: slice } = await textWithFallback({ title: "Frankenstein" }, { offset });
-  process.stdout.write(slice.text);
-  if (slice.nextOffset === undefined) break;
-  offset = slice.nextOffset;
+For text, `textWithFallback({ title: "Frankenstein" }, { offset })` returns `text` and `nextOffset`, which is `undefined` at the end. Errors arrive as `BooksError` subclasses, including `NotFoundError`, `ParseError`, and `InvalidInputError`. You can probably guess which is which.
+
+See the [exports](./src/index.ts), [result types](./src/core/types.ts), and [errors](./src/core/errors.ts).
+
+## 🗺️ Providers
+
+| Provider       | Search | Record | Text | Inside | By ISBN | Ratings | What it is for                                    |
+| -------------- | ------ | ------ | ---- | ------ | ------- | ------- | ------------------------------------------------- |
+| `openlibrary`  | ✓      | ✓      |      | ✓      | ✓       | ✓       | Broad default: editions, works, blurbs, scores    |
+| `gutendex`     | ✓      | ✓      | ✓    |        |         |         | Project Gutenberg, English texts out of copyright |
+| `wolnelektury` | ✓      | ✓      | ✓    |        |         |         | Polish free licence library, texts and audiobooks |
+| `bn`           | ✓      | ✓      |      |        | ✓       |         | Polish national bibliography from MARC            |
+| `lubimyczytac` | ✓      | ✓      |      |        |         | ✓       | Polish editions and reader scores                 |
+
+Fallback walks this order. ISBN lookups visit only Open Library and BN. Give Lubimyczytać's search box an ISBN and it returns unrelated books with perfect confidence. So ISBN lookups skip it.
+
+Gutendex has bad days: in one session, one query came back at once and another took 42 seconds. A 5xx gets passed over and lands in `skipped`. A hang past the 15 second timeout stops the walk. Know who has your book? Pass `-p`.
+
+See the [provider implementations](./src/providers).
+
+## 🤖 Agents
+
+```bash
+pi install npm:@agntn/books
+omp install @agntn/books
+books mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "books": {
+      "command": "npx",
+      "args": ["-y", "@agntn/books", "mcp"]
+    }
+  }
 }
 ```
 
-Anything that goes wrong arrives as a `BooksError`: `NotFoundError` when a catalog does not have
-the book, `ParseError` when a scraped page changed its layout, `InvalidInputError` when an ISBN
-fails its check digit before any request goes out. ISBN handling is exported too - `toIsbn13`,
-`isIsbn`, `assertIsbn` - because normalizing an identifier is half the work of asking about it.
+Pi and OMP register the same read-only tools, and `books mcp` serves them over stdio. They are `books_providers`, `books_search`, `books_get`, `books_text`, `books_text_search`, and `books_text_follow`. See the [tools](./src/tools.ts) and [AI SDK tools](./src/ai.ts).
 
-## For agents
+For the AI SDK, install the `ai` peer dependency:
 
-**MCP** - read-only tools (`books_search`, `books_get`, `books_text`, `books_text_search`,
-`books_text_follow`, `books_providers`):
-
-```bash
-claude mcp add books --scope user -- node ~/Projekty/agntn/books/dist/cli.mjs mcp
+```ts
+import {
+  bookTool,
+  searchTool,
+  textTool,
+  textSearchTool,
+  textFollowTool,
+  providersTool,
+} from "@agntn/books/ai";
 ```
 
-Run from a checkout, that command serves `src/`, so an edit needs a server restart, not a
-rebuild. `BOOKS_DIST=1` pins it to the bundle.
+## 📜 Copyright still applies
 
-**Vercel AI SDK** - `import { bookTool, searchTool, textTool, textSearchTool, textFollowTool, providersTool } from "@agntn/books/ai"`.
+`books text` only returns public domain texts. No argument changes that. Gutenberg's licence header stays inside the text, as the licence requires.
 
-**Pi and OMP** - the package ships an extension for each; `pi install <path>` and
-`omp install <path>` register the same tools.
+Lubimyczytać and the Wolne Lektury search page are read as HTML. A redesign can produce a `ParseError` naming the page. Check their terms of service before automated access. That's your decision as the operator, not the library's to assume.
 
-## Worth knowing
+## 🧩 Adding a provider
 
-- **Texts are only ever public-domain ones.** A book still in copyright has a record here and no
-  text, and no argument to `books text` will change that. The Gutenberg licence header stays
-  inside the text where the licence requires it.
-- **Two providers read HTML.** Lubimyczytać and the Wolne Lektury search page have no API for
-  what this library needs. A redesign surfaces as `ParseError` naming the page - and their terms
-  of service govern automated access, which is the operator's decision to make, not this
-  library's to assume.
-- **Searching inside a book is a phrase search over the whole corpus.** Every word has to sit
-  next to the others. A common line can bury your book past the pages read, so `--book` comes back
-  empty. Pick a rarer phrase from the same book and it's usually on page one.
-- **The National Library indexes fields, not free text.** A search is tried as a title and then
-  as an author; a phrase mixing both finds nothing, the way it would in the catalogue itself.
-- **Gutendex has bad days.** It answers in half a second, or with a 503, or not at all - all
-  three were seen within minutes during the API audit. A backend that returns 5xx is passed over
-  and reported in `skipped`; one that hangs stops the walk rather than spending everyone's
-  timeout.
-- **Catalogs disagree.** Different editions, different page counts, sometimes different titles
-  for the same book. `--provider all` shows the disagreement instead of hiding it, and every
-  record carries the source URL it came from.
+Got a sixth catalog? Subclass `Provider`, say what it can answer, then `register()` it. Start with [Gutendex](./src/providers/gutendex.ts), then read [A new provider](./CONTRIBUTING.md#a-new-provider).
 
-## Development
+## 🛠️ Development
 
 ```bash
 pnpm install
 pnpm test        # vp test, every backend stubbed
 pnpm typecheck   # tsc, then build, then the extensions
 pnpm lint        # build, then vp lint and vp fmt --check
-pnpm build       # obuild - one bundle, four entries sharing the provider registry
+pnpm fmt         # build, then lint fixes and formatting
+pnpm build       # obuild
 ```
 
-Which books may come out whole, and what a catalog has to prove before it gets in: that's
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](./CONTRIBUTING.md) covers texts, MCP from a checkout, tests, and releases.
 
-MIT © [oritwoen](https://github.com/oritwoen)
+## 💛 Thanks
+
+Anthropic and OpenAI chip in through [Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) and [Codex for Open Source](https://developers.openai.com/community/codex-for-oss). Thanks for helping keep this work going.
+
+## 📄 License
+
+[MIT](./LICENSE) © [oritwoen](https://github.com/oritwoen)
