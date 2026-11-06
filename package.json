@@ -1,6 +1,6 @@
 {
   "name": "@agntn/books",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Unified book catalog and public-domain full-text provider library for AI agents",
   "keywords": [
     "omp-extension",
