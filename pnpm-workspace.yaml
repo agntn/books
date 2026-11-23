@@ -13,7 +13,7 @@ catalog:
 
 catalogs:
   deps:
-    "@agntn/tools": 0.2.1
+    "@agntn/tools": 0.2.4
     "@modelcontextprotocol/server": 2.2.0
     node-html-parser: 9.0.4
   dev:
