@@ -43,14 +43,15 @@ function servesSource(argv: readonly string[]): boolean {
 }
 
 /**
- * Serves `src/mcp.ts` over stdio, with the registry that source fills itself.
- * @returns {Promise<void>} Once the server is connected.
+ * Serves `src/mcp.ts` over stdio to 2025 and 2026 clients alike, with the registry that source
+ * fills itself.
+ * @returns {Promise<void>} Once the server listens.
  */
 async function serveSource(): Promise<void> {
   const module: unknown = await import(sourceMcp.href);
   if (!isMcpModule(module)) throw new TypeError(`${sourceMcpPath} has no createMcpServer`);
-  const { StdioServerTransport } = await import("@modelcontextprotocol/server/stdio");
-  await module.createMcpServer().connect(new StdioServerTransport());
+  const { serveStdio } = await import("@modelcontextprotocol/server/stdio");
+  serveStdio(() => module.createMcpServer());
 }
 
 const argv = process.argv.slice(2);
